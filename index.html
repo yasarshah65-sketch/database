@@ -8,7 +8,7 @@
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="theme-color" content="#0A3B35">
+<meta name="theme-color" content="#2B6168">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Bollin Stock">
@@ -26,8 +26,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   :root{
-    --pine:#0E5048;      /* primary — surgical scrub green   */
-    --pine-deep:#0A3B35;
+    --pine:#2B6168;      /* primary — Bollin teal (from logo) */
+    --pine-deep:#1C4A50;
+    --gold:#B08A3E;      /* Bollin gold (from logo)           */
+    --gold-soft:#F6EFDF;
     --mist:#F4F7F6;      /* app background                   */
     --card:#FFFFFF;
     --ink:#17251F;
@@ -52,24 +54,24 @@
 
   /* ---------- layout ---------- */
   .app{display:grid;grid-template-columns:216px 1fr;grid-template-rows:auto 1fr;height:100vh}
-  header.scanbar{grid-column:1/-1;background:var(--pine-deep);color:#fff;display:flex;align-items:center;gap:14px;padding:10px 18px}
-  .brand{font-weight:700;letter-spacing:.4px;white-space:nowrap}
-  .brand small{display:block;font-weight:400;font-size:10px;opacity:.65;letter-spacing:1.4px;text-transform:uppercase}
-  .scanwrap{flex:1;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:7px 12px;max-width:560px}
-  .pulse{width:9px;height:9px;border-radius:50%;background:#7FD8C4;animation:pulse 1.6s infinite}
+  header.scanbar{grid-column:1/-1;background:#fff;color:var(--ink);display:flex;align-items:center;gap:16px;padding:8px 18px;border-bottom:2px solid var(--gold)}
+  .brand{display:flex;align-items:center}
+  .brand img{height:44px;display:block}
+  .scanwrap{flex:1;display:flex;align-items:center;gap:10px;background:var(--mist);border:1px solid var(--line);border-radius:8px;padding:7px 12px;max-width:560px}
+  .pulse{width:9px;height:9px;border-radius:50%;background:var(--gold);animation:pulse 1.6s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
   @media (prefers-reduced-motion:reduce){.pulse{animation:none}}
-  #scanInput{font-family:var(--mono);font-size:13px;color:#FFFFFF;background:transparent;border:none;outline:none;flex:1;min-width:0}
-  #scanInput::placeholder{color:#CFE8E0;opacity:.9}
-  #scanEcho{font-family:var(--mono);font-size:12px;color:#9ED2C4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38%}
-  .userbox{font-size:12px;opacity:.85;text-align:right}
-  .userbox button{background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:6px;padding:4px 10px;font-size:12px}
+  #scanInput{font-family:var(--mono);font-size:13px;color:var(--ink);background:transparent;border:none;outline:none;flex:1;min-width:0}
+  #scanInput::placeholder{color:var(--ink-soft);opacity:.9}
+  #scanEcho{font-family:var(--mono);font-size:12px;color:var(--pine);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38%}
+  .userbox{font-size:12px;color:var(--ink-soft);text-align:right}
+  .userbox button{background:transparent;border:1px solid var(--line);color:var(--pine);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600}
 
   nav{background:var(--card);border-right:1px solid var(--line);padding:14px 0;overflow-y:auto}
   nav a{display:flex;align-items:center;gap:10px;padding:9px 18px;color:var(--ink-soft);text-decoration:none;font-weight:500;font-size:14px;border-left:3px solid transparent}
   nav a.active{color:var(--pine);border-left-color:var(--pine);background:var(--ok-bg)}
   nav a:hover{color:var(--pine)}
-  nav .navsec{padding:14px 18px 4px;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--ink-soft)}
+  nav .navsec{padding:14px 18px 4px;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--gold);font-weight:700}
   nav a:focus-visible{outline:2px solid var(--pine);outline-offset:-2px}
 
   main{overflow-y:auto;padding:22px 26px}
@@ -149,8 +151,8 @@
     body{font-size:16px}                          /* comfortable reading size */
     .app{grid-template-columns:1fr;grid-template-rows:auto auto 1fr}
 
-    header.scanbar{flex-wrap:wrap;gap:8px;padding:10px 12px;position:sticky;top:0;z-index:20}
-    .brand{font-size:15px}
+    header.scanbar{flex-wrap:wrap;gap:8px;padding:8px 12px;position:sticky;top:0;z-index:20}
+    .brand img{height:34px}
     .scanwrap{order:3;flex-basis:100%;max-width:none;padding:9px 12px}
     #scanEcho{font-size:12px}
     .userbox{margin-left:auto}
@@ -214,7 +216,8 @@
 <div class="app">
 
   <header class="scanbar">
-    <div class="brand">Bollin Clinic<small>Inventory</small></div>
+    <a class="brand" href="#dashboard" onclick="goHome(event)" title="Bollin Clinic Stock Manager — home">
+      <img src="logo.png" alt="Bollin Clinic Stock Manager"></a>
     <div class="scanwrap" title="Netum scanner is captured anywhere in the app">
       <span class="pulse" aria-hidden="true"></span>
       <input id="scanInput" data-scan="1" type="text" autocomplete="off" enterkeyhint="go"
@@ -236,6 +239,8 @@
     <a href="#garments" data-view="garments">Garments</a>
     <a href="#instruments" data-view="instruments">Instruments</a>
     <a href="#linen" data-view="linen">Linen</a>
+    <div class="navsec">Implants</div>
+    <a href="#implants" data-view="implants">Implant orders</a>
     <div class="navsec">Activity</div>
     <a href="#log" data-view="log">Transaction log</a>
     <a href="#requests" data-view="requests">Requests</a>
@@ -287,7 +292,7 @@
 </dialog>
 
 <dialog id="addDlg">
-  <div class="m-head">Add new item</div>
+  <div class="m-head" id="addDlgTitle">Add new item</div>
   <div class="m-body">
     <div class="m-row"><label for="adTracker">Tracker</label>
       <select id="adTracker">
@@ -309,12 +314,57 @@
     <div class="m-row"><label for="adQty">Initial qty</label><input id="adQty" type="number" min="0" value="0"></div>
     <div class="m-row"><label for="adRo">Reorder level</label><input id="adRo" type="number" min="0" value="1"></div>
     <div class="m-row"><label for="adCost">Unit cost £</label><input id="adCost" type="number" min="0" step="0.01" placeholder="Optional"></div>
+    <div class="m-row"><label for="adBatch">Batch / Lot</label><input id="adBatch" type="text" placeholder="Optional"></div>
     <div class="m-row"><label for="adExp">Expiry</label><input id="adExp" type="date"></div>
   </div>
   <div class="m-actions">
     <button class="btn" onclick="addDlg.close()">Cancel</button>
-    <button class="btn primary" onclick="saveNewItem()">Add item</button>
+    <button class="btn primary" id="addDlgSave" onclick="saveNewItem()">Add item</button>
   </div>
+</dialog>
+
+<dialog id="impDlg">
+  <div class="m-head">New implant order</div>
+  <div class="m-body">
+    <div class="m-row"><label for="imInit">Patient initials *</label><input id="imInit" type="text" placeholder="e.g. JS" maxlength="5"></div>
+    <div class="m-row"><label for="imPat">PAT number *</label><input id="imPat" type="text" placeholder="e.g. PAT-1234"></div>
+    <div class="m-row"><label for="imSurg">Surgeon</label><input id="imSurg" type="text"></div>
+    <div class="m-row"><label for="imDate">Surgery date</label><input id="imDate" type="date"></div>
+    <div class="m-row"><label for="imDet">Implant details *</label><input id="imDet" type="text" placeholder="e.g. Mentor CPG 323 350cc x2"></div>
+    <div class="m-row"><label for="imOrd">Date ordered</label><input id="imOrd" type="date"></div>
+    <div class="m-row"><label for="imBy">Ordered by</label><input id="imBy" type="text"></div>
+    <div class="m-row"><label for="imStat">Status</label>
+      <select id="imStat"><option>Pending</option><option>Ordered</option><option>Delivered</option></select></div>
+  </div>
+  <div class="m-actions">
+    <button class="btn" onclick="impDlg.close()">Cancel</button>
+    <button class="btn primary" onclick="saveImplant()">Save order</button>
+  </div>
+</dialog>
+
+<dialog id="impRetDlg">
+  <div class="m-head">Return remaining implants</div>
+  <div class="m-body">
+    <div class="itname" id="retName"></div>
+    <div class="itcode" id="retInfo" style="margin-bottom:12px"></div>
+    <div class="m-row"><label for="retDet">What is returned *</label><input id="retDet" type="text" placeholder="e.g. 1x 350cc unopened"></div>
+    <div class="m-row"><label for="retBy">Returned by</label><input id="retBy" type="text"></div>
+  </div>
+  <div class="m-actions">
+    <button class="btn" onclick="impRetDlg.close()">Cancel</button>
+    <button class="btn primary" onclick="saveReturn()">Record return</button>
+  </div>
+</dialog>
+
+<dialog id="impRecvDlg">
+  <div class="m-head">Receive implant delivery</div>
+  <div class="m-body">
+    <div class="itcode" id="recvCode" style="margin-bottom:12px"></div>
+    <p style="font-size:13.5px;color:var(--ink-soft);margin-bottom:12px">
+      Which order does this delivery belong to? The scanned reference is saved on the order and it's marked Delivered.</p>
+    <div id="recvList" style="max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"></div>
+  </div>
+  <div class="m-actions"><button class="btn" onclick="impRecvDlg.close()">Cancel</button></div>
 </dialog>
 
 <div id="printArea"></div>
@@ -367,6 +417,7 @@ const state = {
     // ---- linen
     {tracker:'linen',cat:'Theatre Linen',name:'Theatre Drape Green Large',supplier:'',code:'BC-LIN-001',barcode:'BC-LIN-001',expiry:null,qty:24,unit:'Each',reorder:10,loc:'Linen Cupboard',cost:8.50}
   ],
+  implantsDemo: true,
   log: [],          // {ts,dir,name,code,qty,by,tracker,batch,expiry}
   requests: [],     // {ts,by,item,qty,status}
   barcodeLinks: {}  // scanned barcode -> item index (persisted server-side in v2)
@@ -404,7 +455,8 @@ document.addEventListener('keydown', e => {
   if(e.target.matches('input,select,textarea')) {
     // typing in a form field: still allow scans — bursts are distinguishable,
     // but keep it simple in v1: ignore while a dialog is open
-    if($('#moveDlg').open || $('#linkDlg').open || $('#addDlg').open) return;
+    if($('#moveDlg').open || $('#linkDlg').open || $('#addDlg').open ||
+       $('#impDlg').open || $('#impRetDlg').open) return;
   }
   const now = Date.now();
   if(now - lastKey > 80) buf='';
@@ -426,6 +478,8 @@ document.getElementById('scanInput').addEventListener('keydown', e => {
 });
 function handleScan(code){
   $('#scanEcho').textContent = 'Scanned: ' + code;
+  // receiving an implant delivery?
+  if(currentView==='implants'){ implantScan(code); return; }
   // 1. direct match on barcode or code
   let idx = state.items.findIndex(it => it.barcode===code || it.code===code);
   // 2. learned link
@@ -539,7 +593,8 @@ function tableFor(items, opts={}){
       ${showExp?`<td data-label="Expiry">${it.expiry? new Date(it.expiry).toLocaleDateString('en-GB') : '—'} ${expBadge(it)}</td>`:''}
       <td class="qty" data-label="Qty">${it.tracker==='instruments'?'—':it.qty+' '+it.unit}</td>
       <td data-label="Status"><span class="badge ${s.c}">${s.t}</span></td>
-      <td class="rowbtns" data-label=""><button onclick='openMove(state.items[${state.items.indexOf(it)}])'>Move</button></td>
+      <td class="rowbtns" data-label=""><button onclick='openMove(state.items[${state.items.indexOf(it)}])'>Move</button>
+        <button onclick='openEdit(${state.items.indexOf(it)})'>Edit</button></td>
     </tr>`;
   }).join('');
   return `<table>${head}<tbody>${rows||'<tr><td colspan="8" style="color:var(--ink-soft)">Nothing matches.</td></tr>'}</tbody></table>`;
@@ -616,44 +671,80 @@ function logView(){
 }
 
 function requestsView(){
-  const opts = state.items.filter(i=>i.tracker!=='instruments')
-    .map((i)=>`<option value="${i.name}">${i.name}</option>`).join('');
-  const rows = state.requests.map((r,ix)=>`<tr>
-      <td data-label=""><strong>${r.item}</strong></td>
-      <td data-label="When">${new Date(r.ts).toLocaleString('en-GB')}</td>
-      <td data-label="By">${r.by}</td>
+  const RESP_STATUSES = ['Ordered','Back order','Out of stock','Received','In stock','Other'];
+  const isDone = s => s==='Received' || s==='In stock';
+  const open = state.requests.map((r,ix)=>({r,ix})).filter(x=>!isDone(x.r.status));
+  const done = state.requests.map((r,ix)=>({r,ix})).filter(x=>isDone(x.r.status));
+
+  const openRows = open.map(({r,ix})=>`<tr>
+      <td data-label=""><strong>${r.item}</strong>${r.size?' <span class="code" style="font-size:12px">('+r.size+')</span>':''}</td>
+      <td data-label="Requested">${r.ts?new Date(r.ts).toLocaleDateString('en-GB'):''} · ${r.by}</td>
       <td class="qty" data-label="Qty">${r.qty}</td>
-      <td data-label="Status"><span class="badge ${r.status==='Issued'?'b-ok':r.status==='Approved'?'b-exp':'b-low'}">${r.status}</span></td>
-      <td class="rowbtns" data-label="">${r.status==='Pending'  ? `<button onclick="setReqStatus(${ix},'Approved')">Approve</button>`:''}
-                          ${r.status==='Approved' ? `<button onclick="setReqStatus(${ix},'Issued')">Mark issued</button>`:''}</td></tr>`).join('');
-  return `<h1>Requests</h1><div class="sub">Staff request items here; you approve and issue them</div>
+      <td data-label="Status"><span class="badge ${r.status==='Requested'?'b-low':'b-exp'}">${r.status}</span>
+        ${r.handledBy?'<div style="font-size:11px;color:var(--ink-soft)">'+r.handledBy+(r.responded?' · '+new Date(r.responded).toLocaleDateString('en-GB'):'')+'</div>':''}</td>
+      <td data-label="Remarks">${r.remarks||'—'}</td>
+      <td class="rowbtns" data-label="">
+        <select onchange="respondRequest(${ix}, this.value)" style="padding:6px;border:1px solid var(--line);border-radius:6px;font-size:12px">
+          <option value="">Respond…</option>
+          ${RESP_STATUSES.map(s=>`<option>${s}</option>`).join('')}
+        </select></td></tr>`).join('');
+
+  const doneRows = done.map(({r})=>`<tr>
+      <td data-label=""><strong>${r.item}</strong>${r.size?' ('+r.size+')':''}</td>
+      <td data-label="Requested">${r.ts?new Date(r.ts).toLocaleDateString('en-GB'):''} · ${r.by}</td>
+      <td class="qty" data-label="Qty">${r.qty}</td>
+      <td data-label="Outcome"><span class="badge b-ok">${r.status}</span></td>
+      <td data-label="Handled by">${r.handledBy||'—'}${r.responded?' · '+new Date(r.responded).toLocaleDateString('en-GB'):''}</td>
+      <td data-label="Remarks">${r.remarks||'—'}</td></tr>`).join('');
+
+  return `<h1>Requests</h1>
+    <div class="sub">Surgeons and assistants request items we don't stock; the stock team responds below. Date requested is recorded automatically.</div>
     <div class="toolrow">
-      <select id="reqItem">${opts}</select>
-      <input id="reqQty" type="number" min="1" value="1" style="width:80px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-      <input id="reqBy" type="text" placeholder="Requested by" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
-      <button class="btn primary" onclick="addRequest()">Request item</button>
+      <input id="reqBy" type="text" placeholder="Your name" value="${myName||''}" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+      <input id="reqItem" type="text" placeholder="Details of item requested" style="flex:2;min-width:180px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+      <input id="reqQty" type="number" min="1" value="1" title="Quantity" style="width:80px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+      <input id="reqSize" type="text" placeholder="Size (if applicable)" style="width:140px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+      <button class="btn primary" onclick="addRequest()">Submit request</button>
     </div>
-    <table><thead><tr><th>Item</th><th>When</th><th>By</th><th class="qty">Qty</th><th>Status</th><th></th></tr></thead>
-    <tbody>${rows||'<tr><td colspan="6" style="color:var(--ink-soft)">No requests yet.</td></tr>'}</tbody></table>`;
+    <h1 style="font-size:16px">Open requests</h1>
+    <table><thead><tr><th>Item</th><th>Requested</th><th class="qty">Qty</th><th>Status</th><th>Remarks</th><th>Stock team</th></tr></thead>
+    <tbody>${openRows||'<tr><td colspan="6" style="color:var(--ink-soft)">No open requests.</td></tr>'}</tbody></table>
+    <h1 style="font-size:16px;margin-top:22px">Completed requests</h1>
+    <div class="sub">Kept permanently for reference</div>
+    <table><thead><tr><th>Item</th><th>Requested</th><th class="qty">Qty</th><th>Outcome</th><th>Handled by</th><th>Remarks</th></tr></thead>
+    <tbody>${doneRows||'<tr><td colspan="6" style="color:var(--ink-soft)">Nothing completed yet.</td></tr>'}</tbody></table>`;
 }
 function addRequest(){
-  const item = $('#reqItem').value;
-  const it = state.items.find(i=>i.name===item);
-  const req = {ts:new Date().toISOString(), by:$('#reqBy').value.trim()||myName||'Unknown',
-               item, qty:Math.max(1,parseInt($('#reqQty').value||'1',10)), status:'Pending'};
+  const by = $('#reqBy').value.trim();
+  const item = $('#reqItem').value.trim();
+  if(!by || !item){ toast('Name and item details are required'); return; }
+  if(!myName && by){ myName=by; try{localStorage.setItem('bollin_name',myName);}catch(e){} paintName(); }
+  const req = {_row:null, ts:new Date().toISOString(), by, item,
+               qty:Math.max(1,parseInt($('#reqQty').value||'1',10)),
+               size:$('#reqSize').value.trim(), status:'Requested',
+               handledBy:'', responded:null, remarks:''};
   state.requests.unshift(req);
-  render(); toast('Request added');
-  if(LIVE) api({action:'request', by:req.by, item:req.item, qty:req.qty,
-                tracker: it?TRACKER_TAB[it.tracker]:'', code: it?it.code:''})
+  render(); toast('Request submitted');
+  if(LIVE) api({action:'request', by:req.by, item:req.item, qty:req.qty, size:req.size})
              .then(()=>loadAll())
              .catch(e=>toast('Request not saved — '+e.message));
 }
-function setReqStatus(ix, status){
+async function respondRequest(ix, status){
+  if(!status) return;
   const r = state.requests[ix];
-  r.status = status;
-  render();
-  if(LIVE && r._row) api({action:'setRequest', row:r._row, status, by:myName||'Unknown'})
-                       .catch(e=>toast('Not saved — '+e.message));
+  let remarks = r.remarks||'';
+  if(status==='Other'){
+    remarks = prompt('Remarks for this request:', remarks) || '';
+    if(!remarks){ render(); return; }
+  }
+  const who = myName || prompt('Your name (stock team):','') || 'Unknown';
+  if(!myName && who!=='Unknown'){ myName=who; try{localStorage.setItem('bollin_name',myName);}catch(e){} paintName(); }
+  r.status = status; r.handledBy = who; r.responded = new Date().toISOString(); r.remarks = remarks;
+  render(); toast('Request → '+status);
+  if(LIVE && r._row){
+    try{ await api({action:'respond', row:r._row, status, by:who, remarks}); }
+    catch(err){ toast('Not saved — '+err.message); loadAll(); }
+  }
 }
 function ackAlert(ix){
   const a = state.alerts[ix];
@@ -673,6 +764,125 @@ function alertsView(){
   return `<h1>Alerts</h1><div class="sub">Low stock, out of stock and expiry alerts — acknowledge here or from the email. Unacknowledged alerts escalate automatically.</div>
     <table><thead><tr><th>Item</th><th>Type</th><th>Detail</th><th>Raised</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows||'<tr><td colspan="6" style="color:var(--ink-soft)">No alerts. The daily check runs at 8am once the sheet is connected.</td></tr>'}</tbody></table>`;
+}
+
+/* ---------------- implants ---------------- */
+state.implants = state.implants || (CONFIG.API_URL ? [] : [
+  {_row:null, initials:'JS', pat:'PAT-1041', surgeon:'Mr Siddiqui', surgeryDate:'2026-07-28',
+   details:'Mentor CPG 323 350cc x2', dateOrdered:'2026-07-10', orderedBy:'Reception',
+   status:'Ordered', receivedBy:'', scannedRef:'', returnDetails:'', returnedBy:''},
+  {_row:null, initials:'AK', pat:'PAT-1055', surgeon:'Mr Siddiqui', surgeryDate:'2026-08-04',
+   details:'Motiva Ergonomix 275cc x2 + 1 spare', dateOrdered:null, orderedBy:'',
+   status:'Pending', receivedBy:'', scannedRef:'', returnDetails:'', returnedBy:''}
+]);
+let retImp = null;
+
+function implantsView(){
+  const active = state.implants.filter(i=>i.status!=='Delivered' || !i.returnDetails);
+  const stBadge = s => `<span class="badge ${s==='Delivered'?'b-ok':s==='Ordered'?'b-exp':'b-low'}">${s}</span>`;
+  const row = (im,ix)=>`<tr>
+      <td data-label=""><strong>${im.initials}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${im.pat}</span></td>
+      <td data-label="Surgeon">${im.surgeon||'—'}</td>
+      <td data-label="Surgery">${im.surgeryDate?new Date(im.surgeryDate).toLocaleDateString('en-GB'):'—'}</td>
+      <td data-label="Implants">${im.details}</td>
+      <td data-label="Ordered">${im.dateOrdered?new Date(im.dateOrdered).toLocaleDateString('en-GB'):'—'}${im.orderedBy?' · '+im.orderedBy:''}</td>
+      <td data-label="Status">${stBadge(im.status)}${im.receivedBy?'<div style="font-size:11px;color:var(--ink-soft)">rec. '+im.receivedBy+'</div>':''}</td>
+      <td data-label="Return">${im.returnDetails?im.returnDetails+' <span style="font-size:11px;color:var(--ink-soft)">by '+(im.returnedBy||'?')+'</span>':'—'}</td>
+      <td class="rowbtns" data-label="">
+        ${im.status==='Pending'?`<button onclick="setImplantStatus(${ix},'Ordered')">Mark ordered</button>`:''}
+        ${im.status!=='Delivered'?`<button onclick="setImplantStatus(${ix},'Delivered')">Mark delivered</button>`:''}
+        ${im.status==='Delivered'&&!im.returnDetails?`<button onclick="openReturn(${ix})">Return extras</button>`:''}
+      </td></tr>`;
+  const rows = state.implants.map(row).join('');
+  return `
+    <h1>Implant orders</h1>
+    <div class="sub">Track every implant from consultation to delivery. Scanning a delivery box on this page marks the order as received.</div>
+    <div class="toolrow">
+      <button class="btn primary" onclick="openImplant()">＋ New implant order</button>
+      <span style="color:var(--ink-soft);font-size:13px">${state.implants.filter(i=>i.status==='Pending').length} pending ·
+        ${state.implants.filter(i=>i.status==='Ordered').length} ordered ·
+        ${state.implants.filter(i=>i.status==='Delivered').length} delivered</span>
+    </div>
+    <table><thead><tr><th>Patient</th><th>Surgeon</th><th>Surgery</th><th>Implants</th>
+      <th>Ordered</th><th>Status</th><th>Return</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="8" style="color:var(--ink-soft)">No implant orders yet.</td></tr>'}</tbody></table>`;
+}
+
+function openImplant(){
+  ['imInit','imPat','imSurg','imDate','imDet'].forEach(id=>$('#'+id).value='');
+  $('#imOrd').value = new Date().toISOString().slice(0,10);
+  $('#imBy').value = myName||'';
+  $('#imStat').value = 'Pending';
+  impDlg.showModal(); $('#imInit').focus();
+}
+async function saveImplant(){
+  const im = {_row:null, initials:$('#imInit').value.trim().toUpperCase(),
+    pat:$('#imPat').value.trim(), surgeon:$('#imSurg').value.trim(),
+    surgeryDate:$('#imDate').value||null, details:$('#imDet').value.trim(),
+    dateOrdered:$('#imOrd').value||null, orderedBy:$('#imBy').value.trim()||myName||'Unknown',
+    status:$('#imStat').value, receivedBy:'', scannedRef:'', returnDetails:'', returnedBy:''};
+  if(!im.initials || !im.pat || !im.details){ toast('Initials, PAT number and implant details are required'); return; }
+  state.implants.unshift(im);
+  impDlg.close(); render(); toast('Implant order added for '+im.initials);
+  if(LIVE){
+    try{ await api({action:'implantAdd', fields:{PatientInitials:im.initials, PATNumber:im.pat,
+      Surgeon:im.surgeon, SurgeryDate:im.surgeryDate, ImplantDetails:im.details,
+      DateOrdered:im.dateOrdered, OrderedBy:im.orderedBy, Status:im.status}});
+      loadAll();
+    }catch(err){ toast('Not saved to sheet — '+err.message); }
+  }
+}
+async function setImplantStatus(ix, status, scannedRef){
+  const im = state.implants[ix];
+  im.status = status;
+  const fields = {Status:status};
+  if(status==='Delivered'){
+    im.receivedBy = myName||'Unknown';
+    fields.ReceivedBy = im.receivedBy;
+    fields.ReceivedDate = new Date().toISOString();
+    if(scannedRef){ im.scannedRef = scannedRef; fields.ScannedRef = scannedRef; }
+  }
+  render(); toast(im.initials+' ('+im.pat+') → '+status);
+  if(LIVE && im._row){
+    try{ await api({action:'implantUpdate', row:im._row, fields}); }
+    catch(err){ toast('Not saved to sheet — '+err.message); loadAll(); }
+  }
+}
+function openReturn(ix){
+  retImp = state.implants[ix];
+  $('#retName').textContent = retImp.initials + ' · ' + retImp.pat;
+  $('#retInfo').textContent = retImp.details;
+  $('#retDet').value=''; $('#retBy').value = myName||'';
+  impRetDlg.showModal();
+}
+async function saveReturn(){
+  const det = $('#retDet').value.trim();
+  if(!det){ toast('Describe what is being returned'); return; }
+  retImp.returnDetails = det;
+  retImp.returnedBy = $('#retBy').value.trim()||myName||'Unknown';
+  impRetDlg.close(); render(); toast('Return recorded');
+  if(LIVE && retImp._row){
+    try{ await api({action:'implantUpdate', row:retImp._row, fields:{
+      ReturnDetails:det, ReturnedBy:retImp.returnedBy, ReturnedDate:new Date().toISOString()}}); }
+    catch(err){ toast('Not saved to sheet — '+err.message); loadAll(); }
+  }
+}
+function implantScan(code){
+  // scanned ref already attached to an order?
+  const known = state.implants.findIndex(i=>i.scannedRef && i.scannedRef===code);
+  if(known>=0 && state.implants[known].status!=='Delivered'){
+    setImplantStatus(known,'Delivered',code); return;
+  }
+  const waiting = state.implants.map((im,ix)=>({im,ix}))
+    .filter(x=>x.im.status!=='Delivered');
+  if(!waiting.length){ toast('No open implant orders to receive'); return; }
+  $('#recvCode').textContent = 'Scanned: '+code;
+  $('#recvList').innerHTML = waiting.map(x=>`
+    <div style="padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer"
+         onclick="impRecvDlg.close();setImplantStatus(${x.ix},'Delivered','${code.replace(/'/g,"\\'")}')">
+      <strong>${x.im.initials} · ${x.im.pat}</strong>
+      <div style="font-size:12px;color:var(--ink-soft)">${x.im.details} — ${x.im.status}</div></div>`).join('');
+  impRecvDlg.showModal();
 }
 
 /* ---------------- stocktake (month-end & annual checks) ---------------- */
@@ -788,27 +998,62 @@ async function saveStocktake(){
   }
 }
 
-/* ---------------- add new item ---------------- */
+/* ---------------- add / edit item ---------------- */
+let editItem = null;
 function openAdd(scannedCode){
-  ['adName','adCat','adSup','adLoc','adCode','adCost','adExp'].forEach(id=>$('#'+id).value='');
+  editItem = null;
+  ['adName','adCat','adSup','adLoc','adCode','adCost','adBatch','adExp'].forEach(id=>$('#'+id).value='');
   $('#adUnit').value='Each'; $('#adQty').value=0; $('#adRo').value=1;
   $('#adBar').value = scannedCode || '';
   if(currentView in TRACKER_TAB) $('#adTracker').value = currentView;
+  $('#adTracker').disabled = false;
+  $('#addDlgTitle').textContent='Add new item'; $('#addDlgSave').textContent='Add item';
   addDlg.showModal();
   $('#adName').focus();
+}
+function openEdit(i){
+  const it = state.items[i];
+  editItem = it;
+  $('#adTracker').value = it.tracker; $('#adTracker').disabled = true;
+  $('#adName').value=it.name; $('#adCat').value=it.cat; $('#adSup').value=it.supplier||'';
+  $('#adLoc').value=it.loc; $('#adCode').value=it.code; $('#adBar').value=it.barcode;
+  $('#adUnit').value=it.unit; $('#adQty').value=it.qty; $('#adRo').value=it.reorder;
+  $('#adCost').value=it.cost!=null?it.cost:''; $('#adBatch').value=it.batch||'';
+  $('#adExp').value=it.expiry||'';
+  $('#addDlgTitle').textContent='Edit item'; $('#addDlgSave').textContent='Save changes';
+  addDlg.showModal();
 }
 async function saveNewItem(){
   const name = $('#adName').value.trim();
   if(!name){ toast('Name is required'); return; }
   const tracker = $('#adTracker').value;
-  const it = {tracker, _row:null,
+  const vals = {
     code:$('#adCode').value.trim(), barcode:$('#adBar').value.trim(),
     name, cat:$('#adCat').value.trim(), supplier:$('#adSup').value.trim(),
     loc:$('#adLoc').value.trim(), unit:$('#adUnit').value.trim()||'Each',
     qty:Math.max(0,parseInt($('#adQty').value||'0',10)),
     reorder:Math.max(0,parseInt($('#adRo').value||'0',10)),
     cost:$('#adCost').value?Number($('#adCost').value):null,
-    expiry:$('#adExp').value||null, batch:'', status: tracker==='instruments'?'At Bollin':''};
+    batch:$('#adBatch').value.trim(),
+    expiry:$('#adExp').value||null};
+  const fields = {Code:vals.code, Barcode:vals.barcode, Name:vals.name, Category:vals.cat,
+    Supplier:vals.supplier, Location:vals.loc, Unit:vals.unit, Qty:vals.qty,
+    ReorderLevel:vals.reorder, UnitCost:vals.cost, Batch:vals.batch, Expiry:vals.expiry};
+
+  if(editItem){                                    // ----- edit existing -----
+    Object.assign(editItem, vals);
+    addDlg.close(); render(); toast('Updated: '+name);
+    if(LIVE && editItem._row){
+      try{ await api({action:'updateItem', tracker:TRACKER_TAB[tracker],
+                      row:editItem._row, fields}); }
+      catch(err){ toast('Not saved to sheet — '+err.message); loadAll(); }
+    }
+    editItem = null;
+    return;
+  }
+                                                   // ----- add new -----
+  const it = Object.assign({tracker, _row:null,
+    status: tracker==='instruments'?'At Bollin':''}, vals);
   if(!it.code && !it.barcode){ it.barcode = genCode(tracker); }
   state.items.push(it);
   if(it.barcode) state.barcodeLinks[it.barcode] = state.items.length-1;
@@ -817,10 +1062,8 @@ async function saveNewItem(){
   render();
   if(LIVE){
     try{
-      await api({action:'addItem', tracker:TRACKER_TAB[tracker], fields:{
-        Code:it.code, Barcode:it.barcode, Name:it.name, Category:it.cat,
-        Supplier:it.supplier, Location:it.loc, Unit:it.unit, Qty:it.qty,
-        ReorderLevel:it.reorder, UnitCost:it.cost, Expiry:it.expiry, Status:it.status}});
+      fields.Barcode = it.barcode; fields.Status = it.status;
+      await api({action:'addItem', tracker:TRACKER_TAB[tracker], fields});
       loadAll();   // pick up the sheet row number
     }catch(err){ toast('Not saved to sheet — '+err.message); }
   }
@@ -923,6 +1166,12 @@ function printLabels(){
 }
 
 /* ---------------- router ---------------- */
+function goHome(e){
+  e.preventDefault();
+  document.querySelectorAll('nav a').forEach(x=>x.classList.remove('active'));
+  const d=document.querySelector('nav a[data-view=dashboard]'); if(d) d.classList.add('active');
+  nav('dashboard');
+}
 function nav(view){ currentView=view; window._q=''; window._store=''; window._cat=''; render(); }
 document.querySelectorAll('nav a').forEach(a=>a.addEventListener('click',e=>{
   e.preventDefault();
@@ -942,6 +1191,7 @@ function render(){
   else if(v==='alerts') m.innerHTML = alertsView();
   else if(v==='stocktake'){ m.innerHTML = stocktakeView(); paintStkSummary(); }
   else if(v==='labels') m.innerHTML = labelsView();
+  else if(v==='implants') m.innerHTML = implantsView();
   else m.innerHTML = trackerView(v);
 }
 
@@ -982,7 +1232,15 @@ async function loadAll(){
       name:t.Name, code:t.Code, qty:t.Qty, by:t.By, tracker:String(t.Tracker||'').toLowerCase(),
       batch:t.Batch, expiry:t.Expiry}));
     state.requests = data.requests.map(r=>({_row:r._row, ts:r.Timestamp, by:r.By,
-      item:r.Item, qty:r.Qty, status:r.Status||'Pending', tracker:r.Tracker, code:r.Code}));
+      item:r.Item, qty:r.Qty, size:r.Size||'', status:r.Status||'Requested',
+      handledBy:r.HandledBy||'', responded:r.DateResponded||null, remarks:r.Remarks||''}));
+    state.implants = (data.implants||[]).map(m=>({_row:m._row, ts:m.Timestamp,
+      initials:m.PatientInitials||'', pat:m.PATNumber||'', surgeon:m.Surgeon||'',
+      surgeryDate:m.SurgeryDate||null, details:m.ImplantDetails||'',
+      dateOrdered:m.DateOrdered||null, orderedBy:m.OrderedBy||'',
+      status:m.Status||'Pending', receivedBy:m.ReceivedBy||'',
+      scannedRef:m.ScannedRef?String(m.ScannedRef):'',
+      returnDetails:m.ReturnDetails||'', returnedBy:m.ReturnedBy||''}));
     state.alerts = data.alerts.map(a=>({_row:a._row, ts:a.Timestamp, type:a.Type,
       item:a.Item, detail:a.Detail, status:a.Status, tracker:a.Tracker}));
     data.barcodeLinks.forEach(b=>{
