@@ -385,39 +385,6 @@
   <div class="m-actions"><button class="btn" onclick="impRecvDlg.close()">Cancel</button></div>
 </dialog>
 
-<dialog id="dspDlg">
-  <div class="m-head">New dispatch to CSSD</div>
-  <div class="m-body">
-    <div class="m-row"><label for="dsRef">Dispatch ref</label><input id="dsRef" type="text"></div>
-    <div class="m-row"><label for="dsDate">Date sent</label><input id="dsDate" type="date"></div>
-    <div class="m-row"><label for="dsBy">Sent by</label><input id="dsBy" type="text"></div>
-    <div class="m-row"><label for="dsBatch">Batch / Lot</label><input id="dsBatch" type="text" placeholder="Optional"></div>
-    <div class="m-row"><label for="dsCode">Add item</label>
-      <input id="dsCode" type="text" placeholder="Scan or type CSSD code" data-scan="1">
-      <input id="dsQty" type="number" min="1" value="1" style="width:64px;padding:8px;border:1px solid var(--line);border-radius:8px" title="Count out">
-      <button class="btn" style="padding:8px 10px" onclick="addDispatchLine()">Add</button></div>
-    <div id="dsLines" style="max-height:180px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"></div>
-  </div>
-  <div class="m-actions">
-    <button class="btn" onclick="dspDlg.close()">Cancel</button>
-    <button class="btn primary" onclick="saveDispatch()">Dispatch items</button>
-  </div>
-</dialog>
-
-<dialog id="dspRetDlg">
-  <div class="m-head">Mark returned from CSSD</div>
-  <div class="m-body">
-    <div class="itname" id="drName"></div>
-    <div class="itcode" id="drInfo" style="margin-bottom:12px"></div>
-    <div class="m-row"><label for="drQty">Count in *</label><input id="drQty" type="number" min="0"></div>
-    <div class="m-row"><label for="drBy">Returned by</label><input id="drBy" type="text"></div>
-  </div>
-  <div class="m-actions">
-    <button class="btn" onclick="dspRetDlg.close()">Cancel</button>
-    <button class="btn primary" onclick="saveDispatchReturn()">Mark returned</button>
-  </div>
-</dialog>
-
 <div id="printArea"></div>
 
 <div class="toast" id="toast"></div>
@@ -507,8 +474,7 @@ document.addEventListener('keydown', e => {
     // typing in a form field: still allow scans — bursts are distinguishable,
     // but keep it simple in v1: ignore while a dialog is open
     if($('#moveDlg').open || $('#linkDlg').open || $('#addDlg').open ||
-       $('#impDlg').open || $('#impRetDlg').open || $('#impRecvFormDlg').open ||
-       $('#dspRetDlg').open) return;
+       $('#impDlg').open || $('#impRetDlg').open || $('#impRecvFormDlg').open) return;
   }
   const now = Date.now();
   if(now - lastKey > 80) buf='';
@@ -834,60 +800,231 @@ function alertsView(){
     <tbody>${rows||'<tr><td colspan="6" style="color:var(--ink-soft)">No alerts. The daily check runs at 8am once the sheet is connected.</td></tr>'}</tbody></table>`;
 }
 
-/* ---------------- sterilisation dispatch log ---------------- */
+/* ---------------- sterilisation: use -> dispatch -> receive ---------------- */
 state.dispatch = state.dispatch || (CONFIG.API_URL ? [] : [
-  {_row:null, ref:'BC-DISP-001', dateSent:'2026-05-11', sentBy:'Lisa', name:'Basic Plastic',
-   code:'SET03488-006', qtyOut:41, batch:'LT-2026-001', dateReturned:'2026-05-15', qtyIn:41, returnedBy:'Lisa', status:'Returned'},
-  {_row:null, ref:'BC-DISP-014', dateSent:'2026-07-13', sentBy:'Lisa', name:'Light Handle',
-   code:'SIN07949-031', qtyOut:1, batch:'LT-2026-014', dateReturned:null, qtyIn:null, returnedBy:'', status:'Out'}
+  {_row:null, ref:'', dateSent:null, sentBy:'', name:'Basic Plastic Tray', code:'SET03488-006',
+   qtyOut:41, batch:'', dateUsed:'2026-07-14', usedBy:'Lisa', dateReturned:null, qtyIn:null, returnedBy:'', status:'Pending Collection'},
+  {_row:null, ref:'BC-DISP-014', dateSent:'2026-07-13', sentBy:'Lisa', name:'Light Handle', code:'SIN07949-031',
+   qtyOut:1, batch:'LT-2026-014', dateUsed:'2026-07-12', usedBy:'Lisa', dateReturned:null, qtyIn:null, returnedBy:'', status:'Out'},
+  {_row:null, ref:'BC-DISP-013', dateSent:'2026-07-06', sentBy:'Lisa', name:'Freeman Areola Marker', code:'SIN08457',
+   qtyOut:1, batch:'LT-2026-013', dateUsed:'2026-07-05', usedBy:'Lisa', dateReturned:'2026-07-10', qtyIn:1, returnedBy:'Lisa', status:'Returned'}
 ]);
-let dspLines = [], dspRetRow = null;
+let sterTab = 'use';
+const selDsp = new Set(), selRcv = new Set();
+
+const DSTATUS = {
+  'Pending Collection': '<span class="badge b-low">Pending collection</span>',
+  'Out':      '<span class="badge b-exp">Out at CSSD</span>',
+  'Partial':  '<span class="badge b-low">Partial</span>',
+  'Returned': '<span class="badge b-ok">Returned</span>'
+};
+const dFmt = d => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
 function sterilView(){
-  const open = state.dispatch.filter(d=>d.status!=='Returned');
+  const pending = state.dispatch.filter(d=>d.status==='Pending Collection');
+  const out     = state.dispatch.filter(d=>d.status==='Out' || d.status==='Partial');
+  const tabBtn = (id,label,count)=>`<button onclick="sterTab='${id}';render()"
+      style="padding:10px 16px;border:none;border-bottom:3px solid ${sterTab===id?'var(--pine)':'transparent'};
+      background:none;font-weight:${sterTab===id?'700':'600'};font-size:14.5px;
+      color:${sterTab===id?'var(--pine)':'var(--ink-soft)'}">${label}${count?` <span class="badge ${id==='receive'?'b-exp':'b-low'}" style="font-size:11px">${count}</span>`:''}</button>`;
+  let body = '';
+  if(sterTab==='use') body = sterilUseTab(pending);
+  else if(sterTab==='dispatch') body = sterilDispatchTab(pending);
+  else if(sterTab==='receive') body = sterilReceiveTab(out);
+  else body = sterilHistoryTab();
+  return `
+    <h1>Sterilisation</h1>
+    <div class="sub">Log instruments as used → dispatch to CSSD once or twice a week → receive them back.</div>
+    <div style="border-bottom:1px solid var(--line);margin-bottom:16px;display:flex;gap:4px;overflow-x:auto">
+      ${tabBtn('use','1 · Log used', pending.length)}
+      ${tabBtn('dispatch','2 · Dispatch', pending.length)}
+      ${tabBtn('receive','3 · Receive', out.length)}
+      ${tabBtn('history','History','')}
+    </div>
+    ${body}`;
+}
+
+/* --- tab 1: log used --- */
+function sterilUseTab(pending){
+  const opts = state.items.filter(i=>i.tracker==='instruments')
+    .map(i=>`<option value="${i.code||i.barcode}">${i.name} — ${i.code||i.barcode}</option>`).join('');
+  const rows = pending.map(d=>{
+    const ix = state.dispatch.indexOf(d);
+    return `<tr>
+      <td data-label=""><strong>${d.name||d.code}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${d.code}</span></td>
+      <td data-label="Used">${dFmt(d.dateUsed)}${d.usedBy?' · '+d.usedBy:''}</td>
+      <td class="qty" data-label="Qty">${d.qtyOut}</td>
+      <td data-label="Status">${DSTATUS[d.status]||d.status}</td></tr>`;
+  }).join('');
+  return `
+    <div class="toolrow">
+      <input id="useCode" list="instList" type="text" placeholder="Scan barcode or type code / name…"
+             style="flex:2;min-width:200px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-family:var(--mono)">
+      <datalist id="instList">${opts}</datalist>
+      <input id="useQty" type="number" min="1" value="1" title="Instrument count" style="width:80px;padding:10px;border:1px solid var(--line);border-radius:8px">
+      <button class="btn primary" onclick="logUsed()">Log as used</button>
+    </div>
+    <div class="sub">Scanning anywhere on this tab logs the instrument instantly (count 1). Items below are waiting for the next dispatch.</div>
+    <table><thead><tr><th>Instrument / Tray</th><th>Used</th><th class="qty">Qty</th><th>Status</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="4" style="color:var(--ink-soft)">Nothing pending collection.</td></tr>'}</tbody></table>`;
+}
+function logUsed(codeArg, qtyArg){
+  const code = (codeArg || $('#useCode').value).trim();
+  if(!code){ toast('Scan or type a code first'); return; }
+  const qty = qtyArg || Math.max(1, parseInt(($('#useQty')&&$('#useQty').value)||'1',10));
+  const reg = state.items.find(i=>i.tracker==='instruments' && (i.code===code || i.barcode===code));
+  const line = {_row:null, ref:'', dateSent:null, sentBy:'', name:reg?reg.name:'',
+    code:reg?(reg.code||code):code, qtyOut:qty, batch:'',
+    dateUsed:new Date().toISOString(), usedBy:myName||'Unknown',
+    dateReturned:null, qtyIn:null, returnedBy:'', status:'Pending Collection'};
+  state.dispatch.unshift(line);
+  render();
+  toast('Logged as used: '+(line.name||code)+' — pending collection');
+  if(LIVE){
+    api({action:'useLog', by:myName||'Unknown', date:line.dateUsed,
+         lines:[{code:line.code, name:line.name, qty}]})
+      .then(()=>loadAll())
+      .catch(e=>toast('Not saved — '+e.message));
+  }
+}
+
+/* --- tab 2: dispatch --- */
+function sterilDispatchTab(pending){
+  const allSel = pending.length && pending.every(d=>selDsp.has(state.dispatch.indexOf(d)));
+  const rows = pending.map(d=>{
+    const ix = state.dispatch.indexOf(d);
+    return `<tr>
+      <td data-label="" style="display:flex;gap:10px;align-items:center">
+        <input type="checkbox" ${selDsp.has(ix)?'checked':''} onchange="toggleSel(selDsp,${ix})" style="width:18px;height:18px">
+        <span><strong>${d.name||d.code}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${d.code}</span></span></td>
+      <td data-label="Used">${dFmt(d.dateUsed)}${d.usedBy?' · '+d.usedBy:''}</td>
+      <td class="qty" data-label="Qty">${d.qtyOut}</td></tr>`;
+  }).join('');
+  return `
+    <div class="toolrow">
+      <input id="dsRef" type="text" value="${nextDispatchRef()}" title="Dispatch ref" style="width:130px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-family:var(--mono)">
+      <input id="dsDate" type="date" value="${new Date().toISOString().slice(0,10)}" style="padding:9px 10px;border:1px solid var(--line);border-radius:8px">
+      <input id="dsBy" type="text" placeholder="Sent by" value="${myName||''}" style="width:130px;padding:9px 10px;border:1px solid var(--line);border-radius:8px">
+      <input id="dsBatch" type="text" placeholder="Batch / Lot" style="width:120px;padding:9px 10px;border:1px solid var(--line);border-radius:8px">
+      <input id="dsInstr" type="text" placeholder="Special instructions (optional)" style="flex:1;min-width:150px;padding:9px 10px;border:1px solid var(--line);border-radius:8px">
+    </div>
+    <div class="toolrow">
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px">
+        <input type="checkbox" ${allSel?'checked':''} onchange="selAll(selDsp,'Pending Collection',this.checked)" style="width:18px;height:18px">
+        Tick all (${pending.length})
+      </label>
+      <button class="btn primary" onclick="doDispatch()">Dispatch ${selDsp.size||''} ticked item(s)</button>
+    </div>
+    <table><thead><tr><th>Instrument / Tray</th><th>Used</th><th class="qty">Qty</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="3" style="color:var(--ink-soft)">Nothing pending collection — log used instruments in tab 1 first.</td></tr>'}</tbody></table>`;
+}
+async function doDispatch(){
+  const picked = [...selDsp].map(ix=>state.dispatch[ix]).filter(d=>d && d.status==='Pending Collection');
+  if(!picked.length){ toast('Tick at least one item'); return; }
+  const ref = $('#dsRef').value.trim()||nextDispatchRef();
+  const date = $('#dsDate').value||new Date().toISOString().slice(0,10);
+  const by = $('#dsBy').value.trim()||myName||'Unknown';
+  const batch = $('#dsBatch').value.trim(), instr = $('#dsInstr').value.trim();
+  picked.forEach(d=>{ d.ref=ref; d.dateSent=date; d.sentBy=by; if(batch) d.batch=batch; d.status='Out'; });
+  const rows = picked.map(d=>d._row).filter(Boolean);
+  selDsp.clear();
+  sterTab='receive'; render();
+  toast(picked.length+' item(s) dispatched — '+ref);
+  if(LIVE){
+    try{ await api({action:'dispatchAssign', rows, ref, date, by, batch, instructions:instr}); loadAll(); }
+    catch(err){ toast('Not saved — '+err.message); loadAll(); }
+  }
+}
+
+/* --- tab 3: receive --- */
+function sterilReceiveTab(out){
+  const allSel = out.length && out.every(d=>selRcv.has(state.dispatch.indexOf(d)));
+  const byRef = {};
+  out.forEach(d=>{ (byRef[d.ref||'(no ref)'] = byRef[d.ref||'(no ref)']||[]).push(d); });
+  const banner = out.length ? `
+    <div class="note" style="background:var(--gold-soft);border-color:#E4D3A8;color:#7A5A14">
+      <strong>Awaiting arrival: ${out.length} item(s)</strong> across ${Object.keys(byRef).length} dispatch(es) —
+      ${Object.keys(byRef).map(r=>r+' ('+byRef[r].length+')').join(' · ')}
+    </div>` : '';
+  const rows = out.map(d=>{
+    const ix = state.dispatch.indexOf(d);
+    return `<tr>
+      <td data-label="" style="display:flex;gap:10px;align-items:center">
+        <input type="checkbox" ${selRcv.has(ix)?'checked':''} onchange="toggleSel(selRcv,${ix})" style="width:18px;height:18px">
+        <span><strong>${d.name||d.code}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${d.code}</span></span></td>
+      <td class="code" data-label="Dispatch">${d.ref||'—'}</td>
+      <td data-label="Sent">${dFmt(d.dateSent)}${d.sentBy?' · '+d.sentBy:''}</td>
+      <td class="qty" data-label="Qty">${d.qtyOut}</td>
+      <td data-label="Status">${DSTATUS[d.status]||d.status}</td></tr>`;
+  }).join('');
+  return `${banner}
+    <div class="toolrow">
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px">
+        <input type="checkbox" ${allSel?'checked':''} onchange="selAll(selRcv,'Out',this.checked)" style="width:18px;height:18px">
+        Tick all (${out.length})
+      </label>
+      <button class="btn primary" onclick="doReceive()">Mark ${selRcv.size||''} ticked as received</button>
+    </div>
+    <div class="sub">Tick only what physically arrived — anything left unticked stays on the awaiting list for the next delivery. Scanning a code on this tab ticks it.</div>
+    <table><thead><tr><th>Instrument / Tray</th><th>Dispatch</th><th>Sent</th><th class="qty">Qty</th><th>Status</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="5" style="color:var(--ink-soft)">Nothing out at CSSD — all instruments are home.</td></tr>'}</tbody></table>`;
+}
+async function doReceive(){
+  const picked = [...selRcv].map(ix=>state.dispatch[ix]).filter(d=>d && (d.status==='Out'||d.status==='Partial'));
+  if(!picked.length){ toast('Tick at least one item'); return; }
+  const by = myName || prompt('Received by:','') || 'Unknown';
+  if(!myName && by!=='Unknown'){ myName=by; try{localStorage.setItem('bollin_name',myName);}catch(e){} paintName(); }
+  picked.forEach(d=>{ d.dateReturned=new Date().toISOString(); d.returnedBy=by; d.qtyIn=d.qtyOut; d.status='Returned'; });
+  const rows = picked.map(d=>d._row).filter(Boolean);
+  selRcv.clear(); render();
+  toast(picked.length+' item(s) received back');
+  if(LIVE){
+    try{ await api({action:'dispatchReceive', rows, by}); loadAll(); }
+    catch(err){ toast('Not saved — '+err.message); loadAll(); }
+  }
+}
+
+/* --- tab 4: history --- */
+function sterilHistoryTab(){
   const q = (window._dq||'').toLowerCase();
   const list = state.dispatch.filter(d=>!q || (d.name||'').toLowerCase().includes(q) ||
     (d.code||'').toLowerCase().includes(q) || (d.ref||'').toLowerCase().includes(q)).slice(0,300);
-  const fmt = d => d? new Date(d).toLocaleDateString('en-GB') : '—';
-  const rows = list.map(d=>{
-    const ix = state.dispatch.indexOf(d);
-    const badge = d.status==='Returned' ? '<span class="badge b-ok">Returned</span>'
-      : d.status==='Partial' ? '<span class="badge b-low">Partial</span>'
-      : '<span class="badge b-exp">Out at CSSD</span>';
-    return `<tr>
-      <td data-label=""><strong>${d.name||'—'}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${d.code||''}</span></td>
+  const rows = list.map(d=>`<tr>
+      <td data-label=""><strong>${d.name||d.code||'—'}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${d.code||''}</span></td>
+      <td data-label="Used">${dFmt(d.dateUsed)}${d.usedBy?' · '+d.usedBy:''}</td>
       <td class="code" data-label="Dispatch">${d.ref||'—'}</td>
-      <td data-label="Sent">${fmt(d.dateSent)}${d.sentBy?' · '+d.sentBy:''}</td>
+      <td data-label="Sent">${dFmt(d.dateSent)}${d.sentBy?' · '+d.sentBy:''}</td>
       <td class="qty" data-label="Out">${d.qtyOut??'—'}</td>
-      <td data-label="Returned">${d.dateReturned? fmt(d.dateReturned)+(d.qtyIn!=null?' · in: '+d.qtyIn:'')+(d.returnedBy?' · '+d.returnedBy:'') : '—'}</td>
-      <td data-label="Status">${badge}</td>
-      <td class="rowbtns" data-label="">${d.status!=='Returned'?`<button onclick="openDispatchReturn(${ix})">Mark returned</button>`:''}</td>
-    </tr>`;
-  }).join('');
+      <td data-label="Returned">${d.dateReturned? dFmt(d.dateReturned)+(d.qtyIn!=null?' · in: '+d.qtyIn:'')+(d.returnedBy?' · '+d.returnedBy:'') : '—'}</td>
+      <td data-label="Status">${DSTATUS[d.status]||d.status}</td></tr>`).join('');
   return `
-    <h1>Sterilisation — dispatch log</h1>
-    <div class="sub">Instruments and trays sent to the Countess CSSD and back. ${open.length} line(s) currently out.
-      Scanning a CSSD code here marks it returned (if out) or adds it to a new dispatch.</div>
     <div class="toolrow">
-      <button class="btn primary" onclick="openDispatch()">＋ New dispatch</button>
       <input type="search" placeholder="Search item, code or dispatch ref…" value="${window._dq||''}"
              oninput="window._dq=this.value;refreshSterilTable()">
     </div>
-    <div id="dspWrap"><table><thead><tr><th>Item / Tray</th><th>Dispatch</th><th>Sent</th>
-      <th class="qty">Out</th><th>Returned</th><th>Status</th><th></th></tr></thead>
-      <tbody>${rows||'<tr><td colspan="7" style="color:var(--ink-soft)">No dispatches logged yet.</td></tr>'}</tbody></table></div>`;
+    <div id="dspWrap"><table><thead><tr><th>Item / Tray</th><th>Used</th><th>Dispatch</th><th>Sent</th>
+      <th class="qty">Out</th><th>Returned</th><th>Status</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="7" style="color:var(--ink-soft)">No sterilisation records yet.</td></tr>'}</tbody></table></div>`;
 }
 function refreshSterilTable(){
-  if(currentView!=='instruments') return;
+  if(currentView!=='instruments' || sterTab!=='history') return;
   const el = document.getElementById('dspWrap');
   if(!el) return;
-  // re-render only the table portion
   const tmp = document.createElement('div');
-  tmp.innerHTML = sterilView();
+  tmp.innerHTML = sterilHistoryTab();
   const fresh = tmp.querySelector('#dspWrap');
   if(fresh) el.innerHTML = fresh.innerHTML;
 }
 
+/* --- shared helpers --- */
+function toggleSel(set, ix){ set.has(ix) ? set.delete(ix) : set.add(ix); render(); }
+function selAll(set, status, on){
+  set.clear();
+  if(on) state.dispatch.forEach((d,ix)=>{
+    if(status==='Out' ? (d.status==='Out'||d.status==='Partial') : d.status===status) set.add(ix);
+  });
+  render();
+}
 function nextDispatchRef(){
   let max = 0;
   state.dispatch.forEach(d=>{
@@ -896,81 +1033,25 @@ function nextDispatchRef(){
   });
   return 'BC-DISP-' + String(max+1).padStart(3,'0');
 }
-function openDispatch(prefillCode){
-  dspLines = [];
-  $('#dsRef').value = nextDispatchRef();
-  $('#dsDate').value = new Date().toISOString().slice(0,10);
-  $('#dsBy').value = myName||'';
-  $('#dsBatch').value=''; $('#dsCode').value=''; $('#dsQty').value=1;
-  paintDspLines();
-  dspDlg.showModal();
-  if(prefillCode){ $('#dsCode').value = prefillCode; addDispatchLine(); }
-  $('#dsCode').focus();
-}
-function addDispatchLine(){
-  const code = $('#dsCode').value.trim();
-  if(!code){ toast('Scan or type a code first'); return; }
-  const reg = state.items.find(i=>i.tracker==='instruments' && (i.code===code || i.barcode===code));
-  dspLines.push({code, name: reg?reg.name:'', qtyOut: Math.max(1,parseInt($('#dsQty').value||'1',10))});
-  $('#dsCode').value=''; $('#dsQty').value=1;
-  paintDspLines(); $('#dsCode').focus();
-}
-function paintDspLines(){
-  $('#dsLines').innerHTML = dspLines.length ? dspLines.map((l,i)=>`
-    <div style="padding:8px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;align-items:center">
-      <span><strong>${l.name||l.code}</strong> <span style="font-family:var(--mono);font-size:11.5px;color:var(--ink-soft)">${l.code}</span> ×${l.qtyOut}</span>
-      <button class="btn" style="padding:4px 10px;font-size:12px" onclick="dspLines.splice(${i},1);paintDspLines()">Remove</button></div>`).join('')
-    : '<div style="padding:12px;color:var(--ink-soft);font-size:13px">No items yet — scan trays/instruments to add them.</div>';
-}
-async function saveDispatch(){
-  if(!dspLines.length){ toast('Add at least one item'); return; }
-  const ref = $('#dsRef').value.trim()||nextDispatchRef();
-  const date = $('#dsDate').value||new Date().toISOString().slice(0,10);
-  const by = $('#dsBy').value.trim()||myName||'Unknown';
-  const batch = $('#dsBatch').value.trim();
-  dspLines.forEach(l=>state.dispatch.unshift({_row:null, ref, dateSent:date, sentBy:by,
-    name:l.name, code:l.code, qtyOut:l.qtyOut, batch, dateReturned:null, qtyIn:null, returnedBy:'', status:'Out'}));
-  const n = dspLines.length; dspLines=[];
-  dspDlg.close(); render(); toast(n+' item(s) dispatched — '+ref);
-  if(LIVE){
-    try{ await api({action:'dispatchAdd', ref, date, by, batch,
-      lines: state.dispatch.slice(0,n).map(d=>({code:d.code, name:d.name, qtyOut:d.qtyOut}))});
-      loadAll();
-    }catch(err){ toast('Not saved to sheet — '+err.message); }
-  }
-}
-function openDispatchReturn(ix){
-  dspRetRow = state.dispatch[ix];
-  $('#drName').textContent = (dspRetRow.name||dspRetRow.code) + ' — ' + dspRetRow.ref;
-  $('#drInfo').textContent = 'Sent '+(dspRetRow.dateSent?new Date(dspRetRow.dateSent).toLocaleDateString('en-GB'):'')+' · count out: '+dspRetRow.qtyOut;
-  $('#drQty').value = dspRetRow.qtyOut||1;
-  $('#drBy').value = myName||'';
-  dspRetDlg.showModal();
-}
-async function saveDispatchReturn(){
-  const qtyIn = Math.max(0, parseInt($('#drQty').value||'0',10));
-  const by = $('#drBy').value.trim()||myName||'Unknown';
-  dspRetRow.qtyIn = qtyIn; dspRetRow.returnedBy = by;
-  dspRetRow.dateReturned = new Date().toISOString();
-  dspRetRow.status = qtyIn >= (dspRetRow.qtyOut||0) ? 'Returned' : 'Partial';
-  if(qtyIn < (dspRetRow.qtyOut||0)) toast('Count variance recorded: out '+dspRetRow.qtyOut+', in '+qtyIn);
-  dspRetDlg.close(); render(); toast((dspRetRow.name||dspRetRow.code)+' marked '+dspRetRow.status.toLowerCase());
-  if(LIVE && dspRetRow._row){
-    try{ await api({action:'dispatchReturn', row:dspRetRow._row, qtyIn, by}); }
-    catch(err){ toast('Not saved to sheet — '+err.message); loadAll(); }
-  }
-}
 function sterilScan(code){
-  // if dispatch dialog is open, add as a line
-  if($('#dspDlg').open){ $('#dsCode').value = code; addDispatchLine(); return; }
-  // an open line with this code -> return it
-  const openIx = state.dispatch.findIndex(d=>d.status!=='Returned' && d.code===code);
-  if(openIx>=0){ openDispatchReturn(openIx); return; }
-  // else start a new dispatch with it
-  openDispatch(code);
+  const norm = c => String(c||'').trim();
+  if(sterTab==='use'){ logUsed(norm(code), 1); return; }
+  if(sterTab==='dispatch'){
+    const ix = state.dispatch.findIndex(d=>d.status==='Pending Collection' && d.code===norm(code));
+    if(ix>=0){ selDsp.add(ix); render(); toast('Ticked for dispatch: '+(state.dispatch[ix].name||code)); }
+    else toast('No pending item with code '+code);
+    return;
+  }
+  if(sterTab==='receive'){
+    const ix = state.dispatch.findIndex(d=>(d.status==='Out'||d.status==='Partial') && d.code===norm(code));
+    if(ix>=0){ selRcv.add(ix); render(); toast('Ticked as received: '+(state.dispatch[ix].name||code)); }
+    else toast('No outstanding item with code '+code);
+    return;
+  }
+  toast('Scanned '+code+' — use tabs 1–3 to act on it');
 }
 
-/* ---------------- implants ---------------- */
+/* ---------------- implants ---------------- *//* ---------------- implants ---------------- */
 state.implants = state.implants || (CONFIG.API_URL ? [] : [
   {_row:null, initials:'JS', pat:'PAT-1041', surgeon:'Mr Siddiqui', surgeryDate:'2026-07-28',
    details:'Mentor CPG 323 350cc', qty:2, remarks:'', dateOrdered:'2026-07-10', orderedBy:'Reception',
@@ -1135,7 +1216,7 @@ function printImplantReport(){
   let from, to, label;
   if(range==='day'){ from=new Date(today); to=new Date(today); label='Today, '+today.toLocaleDateString('en-GB'); }
   else if(range==='week'){
-    from=new Date(today); from.setDate(from.getDate()-((from.getDay()+6)%7));  // Monday
+    from=new Date(today); from.setDate(from.getDate()-((from.getDay()+6)%7));
     to=new Date(from); to.setDate(to.getDate()+6);
     label='Week '+from.toLocaleDateString('en-GB')+' – '+to.toLocaleDateString('en-GB');
   } else if(range==='month'){
@@ -1148,34 +1229,78 @@ function printImplantReport(){
     label=from.toLocaleDateString('en-GB')+' – '+to.toLocaleDateString('en-GB');
   }
   to.setHours(23,59,59);
-  const rows = state.implants.filter(im=>{
+  const inRange = state.implants.filter(im=>{
     const d = im[basis] ? new Date(im[basis]) : null;
     return d && d>=from && d<=to;
   });
-  if(!rows.length){ toast('No implant orders in that period'); return; }
+  if(!inRange.length){ toast('No implant orders in that period'); return; }
+
+  // ---- group by the selected date, oldest first ----
+  const groups = {};
+  inRange.forEach(im=>{
+    const key = new Date(im[basis]).toISOString().slice(0,10);
+    (groups[key] = groups[key]||[]).push(im);
+  });
+  const keys = Object.keys(groups).sort();
   const basisLabel = basis==='surgeryDate'?'surgery date':'date ordered';
   const fmt = d => d? new Date(d).toLocaleDateString('en-GB') : '—';
+  const stChip = s => `<span style="display:inline-block;padding:1px 8px;border-radius:99px;font-size:8pt;font-weight:600;
+      background:${s==='Delivered'?'#E4F0ED':s==='Ordered'?'#FFF0D6':'#FCE9E7'};
+      color:${s==='Delivered'?'#0E5048':s==='Ordered'?'#7A4A00':'#A61B1B'}">${s}</span>`;
+  const th = x=>'<th style="border:1px solid #C9D6D2;padding:5px 7px;text-align:left;background:#2B6168;color:#fff;font-size:8.5pt;letter-spacing:.3px">'+x+'</th>';
+  const td = (x,extra)=>'<td style="border:1px solid #C9D6D2;padding:5px 7px;font-size:9pt;'+(extra||'')+'">'+(x??'—')+'</td>';
+
+  const totals = {Pending:0, Ordered:0, Delivered:0};
+  inRange.forEach(im=>{ if(totals[im.status]!=null) totals[im.status]++; });
+
+  const sections = keys.map(k=>{
+    const d = new Date(k);
+    const title = d.toLocaleDateString('en-GB',{weekday:'long', day:'numeric', month:'long', year:'numeric'});
+    const rows = groups[k].map(im=>'<tr>'+
+        td('<strong>'+im.initials+'</strong>') +
+        td('<span style="font-family:monospace">'+im.pat+'</span>') +
+        td(im.surgeon||'—') +
+        td(fmt(im.surgeryDate)) +
+        td(im.details + (im.remarks?'<div style="font-size:8pt;color:#666">'+im.remarks+'</div>':'')) +
+        td(im.qty||'—','text-align:center') +
+        td(fmt(im.dateOrdered)+(im.orderedBy?'<div style="font-size:8pt;color:#666">'+im.orderedBy+'</div>':'')) +
+        td(stChip(im.status)) +
+        td(im.receivedBy? im.receivedBy+(im.receivedQty?' ×'+im.receivedQty:'')+(im.storage?'<div style="font-size:8pt;color:#666">'+im.storage+'</div>':'') : '—') +
+        td(im.returnDetails? (im.returnedQty?'×'+im.returnedQty+' ':'')+im.returnDetails+'<div style="font-size:8pt;color:#666">'+(im.returnedBy||'')+'</div>' : '—') +
+      '</tr>').join('');
+    return `
+      <div style="page-break-inside:avoid;margin-bottom:7mm">
+        <div style="font-size:11.5pt;font-weight:700;color:#2B6168;border-left:4px solid #B08A3E;
+             padding:2px 0 2px 8px;margin-bottom:2.5mm">${title}
+          <span style="font-weight:400;font-size:9pt;color:#666">— ${groups[k].length} order(s)</span></div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr>${['Patient','PAT no.','Surgeon','Surgery','Implant details','Qty','Ordered','Status','Received / kept in','Returned'].map(th).join('')}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
   $('#printArea').innerHTML = `
-    <div style="padding:10mm;font-family:var(--sans)">
-      <div style="display:flex;align-items:center;gap:8mm;border-bottom:2px solid #B08A3E;padding-bottom:4mm;margin-bottom:5mm">
-        <img src="logo.png" style="height:16mm">
-        <div><div style="font-size:14pt;font-weight:700">Implant status report</div>
-        <div style="font-size:10pt;color:#555">${label} (by ${basisLabel}) — printed ${new Date().toLocaleString('en-GB')}${myName?' by '+myName:''}</div></div>
+    <div style="padding:8mm;font-family:var(--sans)">
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2.5px solid #B08A3E;padding-bottom:4mm;margin-bottom:5mm">
+        <div style="display:flex;align-items:center;gap:6mm">
+          <img src="logo.png" style="height:15mm">
+          <div><div style="font-size:15pt;font-weight:700;color:#2B6168">Implant Status Report</div>
+          <div style="font-size:9.5pt;color:#555">${label} · grouped by ${basisLabel}</div></div>
+        </div>
+        <div style="text-align:right;font-size:8.5pt;color:#666">
+          Printed ${new Date().toLocaleString('en-GB')}${myName?'<br>by '+myName:''}</div>
       </div>
-      <table style="width:100%;border-collapse:collapse;font-size:9pt">
-        <thead><tr style="background:#EFF4F3">
-          ${['Patient','PAT','Surgeon','Surgery','Implants','Qty','Ordered','Status','Received','Kept in','Returned','Remarks']
-            .map(x=>'<th style="border:1px solid #ccc;padding:4px 6px;text-align:left">'+x+'</th>').join('')}</tr></thead>
-        <tbody>${rows.map(im=>'<tr>'+ [
-            im.initials, im.pat, im.surgeon||'—', fmt(im.surgeryDate),
-            im.details, im.qty||'—', fmt(im.dateOrdered)+(im.orderedBy?' ('+im.orderedBy+')':''),
-            im.status, im.receivedBy?(im.receivedBy+(im.receivedQty?' ×'+im.receivedQty:'')):'—',
-            im.storage||'—',
-            im.returnDetails?((im.returnedQty?'×'+im.returnedQty+' ':'')+im.returnDetails+' ('+(im.returnedBy||'?')+')'):'—',
-            im.remarks||'—'
-          ].map(x=>'<td style="border:1px solid #ccc;padding:4px 6px">'+x+'</td>').join('') +'</tr>').join('')}</tbody>
-      </table>
-      <div style="font-size:8pt;color:#777;margin-top:4mm">${rows.length} order(s) · Bollin Clinic Stock Manager</div>
+      <div style="display:flex;gap:5mm;margin-bottom:5mm">
+        ${[['Total',inRange.length,'#2B6168'],['Pending',totals.Pending,'#A61B1B'],
+           ['Ordered',totals.Ordered,'#7A4A00'],['Delivered',totals.Delivered,'#0E5048']]
+          .map(x=>`<div style="border:1px solid #C9D6D2;border-radius:2mm;padding:2.5mm 5mm;text-align:center">
+            <div style="font-size:13pt;font-weight:700;color:${x[2]}">${x[1]}</div>
+            <div style="font-size:8pt;color:#666;text-transform:uppercase;letter-spacing:.5px">${x[0]}</div></div>`).join('')}
+      </div>
+      ${sections}
+      <div style="font-size:8pt;color:#888;margin-top:4mm;border-top:1px solid #ddd;padding-top:2mm">
+        Bollin Clinic Stock Manager · Implant orders ${label} · ${inRange.length} order(s) total</div>
     </div>`;
   setTimeout(()=>window.print(), 250);
 }
@@ -1541,13 +1666,19 @@ async function loadAll(){
       scannedRef:m.ScannedRef?String(m.ScannedRef):'',
       returnDetails:m.ReturnDetails||'', returnedQty:m.ReturnedQty?Number(m.ReturnedQty):null,
       returnedBy:m.ReturnedBy||''}));
-    state.dispatch = (data.dispatch||[]).map(d=>({_row:d._row, ref:d.DispatchRef||'',
+    state.dispatch = (data.dispatch||[]).map(d=>{
+      let st = String(d.Status||'').trim().toLowerCase();
+      if(st.startsWith('pending')) st='Pending Collection';
+      else if(st==='partial') st='Partial';
+      else if(st==='returned' || (!st && d.DateReturned)) st='Returned';
+      else st='Out';
+      return {_row:d._row, ref:d.DispatchRef||'',
       dateSent:d.DateSent||null, sentBy:d.SentBy||'', name:d.ItemName||'',
-      code:d.Code?String(d.Code):'', qtyOut:d.CountOut!=null?Number(d.CountOut):null,
-      batch:d.BatchLot||'', dateReturned:d.DateReturned||null,
+      code:d.Code?String(d.Code):'', qtyOut:d.CountOut!=null&&d.CountOut!==''?Number(d.CountOut):1,
+      batch:d.BatchLot||'', dateUsed:d.DateUsed||null, usedBy:d.UsedBy||'',
+      dateReturned:d.DateReturned||null,
       qtyIn:d.CountIn!=null&&d.CountIn!==''?Number(d.CountIn):null,
-      returnedBy:d.ReturnedBy||'',
-      status:d.Status||(d.DateReturned?'Returned':'Out')}));
+      returnedBy:d.ReturnedBy||'', status:st};});
     state.alerts = data.alerts.map(a=>({_row:a._row, ts:a.Timestamp, type:a.Type,
       item:a.Item, detail:a.Detail, status:a.Status, tracker:a.Tracker}));
     data.barcodeLinks.forEach(b=>{

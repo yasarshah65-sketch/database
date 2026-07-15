@@ -42,6 +42,9 @@ function doPost(e) {
       case 'implantUpdate':return json_(implantUpdate_(req));
       case 'dispatchAdd':   return json_(dispatchAdd_(req));
       case 'dispatchReturn':return json_(dispatchReturn_(req));
+      case 'useLog':         return json_(useLog_(req));
+      case 'dispatchAssign': return json_(dispatchAssign_(req));
+      case 'dispatchReceive':return json_(dispatchReceive_(req));
       case 'ack':       return json_(ackAlert_(req));
       case 'stocktake': return json_(stocktake_(req));
       default:          return json_({ ok: false, error: 'Unknown action' });
@@ -297,7 +300,59 @@ function implantUpdate_(q) {
 
 const DISPATCH_HEADERS = ['DispatchRef','DateSent','SentBy','ItemName','Code','CountOut',
   'BatchLot','Instructions','CollectedBy','DateCollected','CountessRef',
-  'DateReturned','ReturnedBy','CountIn','Status'];
+  'DateReturned','ReturnedBy','CountIn','Status','DateUsed','UsedBy'];
+
+function dlSheet_() {
+  const sh = ss_().getSheetByName('DispatchLog');
+  if (!sh) throw 'DispatchLog tab missing — run migrate()';
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  return { sh: sh, head: head, col: n => head.indexOf(n) + 1 };
+}
+
+function useLog_(q) {
+  // q: {by, date, lines:[{code, name, qty}]} -> rows with Status 'Pending Collection'
+  const d = dlSheet_();
+  const rows = (q.lines || []).map(l => {
+    const r = new Array(d.head.length).fill('');
+    r[d.col('ItemName') - 1] = l.name || '';
+    r[d.col('Code') - 1] = l.code || '';
+    r[d.col('CountOut') - 1] = Math.max(1, Number(l.qty) || 1);
+    r[d.col('Status') - 1] = 'Pending Collection';
+    r[d.col('DateUsed') - 1] = q.date ? new Date(q.date) : new Date();
+    r[d.col('UsedBy') - 1] = q.by || '';
+    return r;
+  });
+  if (!rows.length) return { ok: false, error: 'No lines' };
+  d.sh.getRange(d.sh.getLastRow() + 1, 1, rows.length, d.head.length).setValues(rows);
+  return { ok: true, added: rows.length };
+}
+
+function dispatchAssign_(q) {
+  // q: {rows:[sheetRow,...], ref, date, by, batch, instructions}
+  const d = dlSheet_();
+  (q.rows || []).forEach(r => {
+    d.sh.getRange(r, d.col('DispatchRef')).setValue(q.ref || '');
+    d.sh.getRange(r, d.col('DateSent')).setValue(q.date ? new Date(q.date) : new Date());
+    d.sh.getRange(r, d.col('SentBy')).setValue(q.by || '');
+    if (q.batch) d.sh.getRange(r, d.col('BatchLot')).setValue(q.batch);
+    if (q.instructions) d.sh.getRange(r, d.col('Instructions')).setValue(q.instructions);
+    d.sh.getRange(r, d.col('Status')).setValue('Out');
+  });
+  return { ok: true, dispatched: (q.rows || []).length };
+}
+
+function dispatchReceive_(q) {
+  // q: {rows:[sheetRow,...], by}
+  const d = dlSheet_();
+  (q.rows || []).forEach(r => {
+    const out = Number(d.sh.getRange(r, d.col('CountOut')).getValue()) || 0;
+    d.sh.getRange(r, d.col('DateReturned')).setValue(new Date());
+    d.sh.getRange(r, d.col('ReturnedBy')).setValue(q.by || '');
+    d.sh.getRange(r, d.col('CountIn')).setValue(out);
+    d.sh.getRange(r, d.col('Status')).setValue('Returned');
+  });
+  return { ok: true, received: (q.rows || []).length };
+}
 
 function dispatchAdd_(q) {
   // q: {ref, date, by, batch, lines:[{code, name, qtyOut, instructions}]}
@@ -350,12 +405,23 @@ function migrate() {
       }
     });
   }
-  // 1b. DispatchLog tab (sterilisation) — matches the original Dispatch Log column order
-  if (!ss.getSheetByName('DispatchLog')) {
-    const dl = ss.insertSheet('DispatchLog');
+  // 1b. DispatchLog tab (sterilisation) — create, or append any missing columns
+  let dl = ss.getSheetByName('DispatchLog');
+  if (!dl) {
+    dl = ss.insertSheet('DispatchLog');
     dl.getRange(1, 1, 1, DISPATCH_HEADERS.length).setValues([DISPATCH_HEADERS])
       .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
     dl.setFrozenRows(1);
+  } else {
+    const haveD = dl.getRange(1, 1, 1, Math.max(dl.getLastColumn(), 1)).getValues()[0].map(String);
+    DISPATCH_HEADERS.forEach(hd => {
+      if (haveD.indexOf(hd) < 0) {
+        const c3 = dl.getLastColumn() + 1;
+        dl.getRange(1, c3).setValue(hd)
+          .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+        haveD.push(hd);
+      }
+    });
   }
   // 2. Requests tab: old schema (Tracker/Code, HandledAt) -> new (Size, DateResponded, Remarks)
   const sh = ss.getSheetByName('Requests');
