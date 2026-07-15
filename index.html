@@ -214,6 +214,8 @@
     <a href="#log" data-view="log">Transaction log</a>
     <a href="#requests" data-view="requests">Requests</a>
     <a href="#alerts" data-view="alerts">Alerts</a>
+    <div class="navsec">Checks</div>
+    <a href="#stocktake" data-view="stocktake">Stocktake</a>
   </nav>
 
   <main id="main"></main>
@@ -262,7 +264,7 @@
    Leave empty to run in demo mode with sample data.
    ============================================================= */
 const CONFIG = {
-  API_URL: ""   // e.g. "https://script.google.com/macros/s/AKfyc.../exec"
+  API_URL: "https://script.google.com/macros/s/AKfycbzROzVGU8k6cZqiFjH2RuuVwh-NHDmY7mUyCt_QARIUcnKkbBlxEQtK1-k2aUtM6HKZ/exec"
 };
 const TRACKER_TAB = {consumables:'Consumables',meds:'Meds',garments:'Garments',instruments:'Instruments',linen:'Linen'};
 
@@ -365,7 +367,13 @@ function handleScan(code){
   let idx = state.items.findIndex(it => it.barcode===code || it.code===code);
   // 2. learned link
   if(idx<0 && code in state.barcodeLinks) idx = state.barcodeLinks[code];
-  if(idx>=0){ openMove(state.items[idx]); return; }
+  if(idx>=0){
+    const it = state.items[idx];
+    // during a stocktake, a scan counts the item instead of moving stock
+    if(currentView==='stocktake' && it.tracker===stk.tracker &&
+       (!stk.store || it.loc===stk.store)){ bumpCount(it); return; }
+    openMove(it); return;
+  }
   // 3. unknown -> link dialog
   $('#linkCode').textContent = code;
   linkDlg.returnValue=''; linkDlg.dataset.code=code;
@@ -603,6 +611,119 @@ function alertsView(){
     <tbody>${rows||'<tr><td colspan="6" style="color:var(--ink-soft)">No alerts. The daily check runs at 8am once the sheet is connected.</td></tr>'}</tbody></table>`;
 }
 
+/* ---------------- stocktake (month-end & annual checks) ---------------- */
+const stk = { counts:{}, type:'Month-end', tracker:'consumables', store:'', apply:true };
+
+function stkKey(it){ return it.tracker + '|' + (it.code || it.name); }
+
+function stkItems(){
+  return state.items.filter(i =>
+    i.tracker === stk.tracker &&
+    i.tracker !== 'instruments' &&
+    (!stk.store || i.loc === stk.store));
+}
+
+function setCount(key, v){
+  if(v === '' || v === null) delete stk.counts[key];
+  else stk.counts[key] = Math.max(0, parseInt(v, 10) || 0);
+  paintStkSummary();
+}
+function bumpCount(it){
+  const k = stkKey(it);
+  stk.counts[k] = (stk.counts[k] || 0) + 1;
+  render();
+  toast('Counted: ' + it.name + ' = ' + stk.counts[k]);
+}
+function paintStkSummary(){
+  const el = document.getElementById('stkSummary');
+  if(!el) return;
+  const items = stkItems();
+  const counted = items.filter(i => stkKey(i) in stk.counts);
+  const vars = counted.filter(i => stk.counts[stkKey(i)] !== i.qty);
+  el.textContent = counted.length + ' of ' + items.length + ' items counted · ' +
+                   vars.length + ' variance' + (vars.length===1?'':'s');
+}
+
+function stocktakeView(){
+  const trackers = ['consumables','meds','garments','linen'];
+  const all = state.items.filter(i=>i.tracker===stk.tracker);
+  const stores = [...new Set(all.map(i=>i.loc).filter(Boolean))].sort();
+  const items = stkItems();
+  const rows = items.map(it=>{
+    const k = stkKey(it);
+    const counted = k in stk.counts ? stk.counts[k] : '';
+    const v = counted === '' ? null : counted - it.qty;
+    const vBadge = v===null ? '' :
+      v===0 ? '<span class="badge b-ok">Match</span>' :
+      `<span class="badge ${v<0?'b-out':'b-low'}">${v>0?'+':''}${v}</span>`;
+    return `<tr>
+      <td data-label=""><strong>${it.name}</strong></td>
+      <td class="code" data-label="Code">${it.code||'—'}</td>
+      <td data-label="Location">${it.loc||'—'}</td>
+      <td class="qty" data-label="Expected">${it.qty} ${it.unit}</td>
+      <td data-label="Counted"><input type="number" min="0" value="${counted}" placeholder="—"
+          style="width:90px;padding:8px;border:1px solid var(--line);border-radius:8px;font-family:var(--mono)"
+          onchange="setCount('${k.replace(/'/g,"\\'")}',this.value)"></td>
+      <td data-label="Variance">${vBadge}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <h1>Stocktake</h1>
+    <div class="sub">Month-end or annual inventory check — count shelf by shelf, scan or type counts, then save.
+      Scanning an item here adds +1 to its count.</div>
+    <div class="toolrow">
+      <select onchange="stk.type=this.value;render()">
+        <option ${stk.type==='Month-end'?'selected':''}>Month-end</option>
+        <option ${stk.type==='Annual'?'selected':''}>Annual</option>
+      </select>
+      <select onchange="stk.tracker=this.value;stk.store='';stk.counts={};render()">
+        ${trackers.map(t=>`<option value="${t}" ${t===stk.tracker?'selected':''}>${TRACKER_LABEL[t]}</option>`).join('')}
+      </select>
+      <select onchange="stk.store=this.value;render()">
+        <option value="">All stores</option>
+        ${stores.map(s=>`<option ${s===stk.store?'selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+    <div class="toolrow" style="justify-content:space-between">
+      <span id="stkSummary" style="color:var(--ink-soft);font-size:13px"></span>
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px">
+        <input type="checkbox" ${stk.apply?'checked':''} onchange="stk.apply=this.checked">
+        Adjust stock to counted values on save
+      </label>
+      <button class="btn primary" onclick="saveStocktake()">Save ${stk.type} check</button>
+    </div>
+    ${items.length? `<table><thead><tr><th>Item</th><th>Code</th><th>Location</th>
+      <th class="qty">Expected</th><th>Counted</th><th>Variance</th></tr></thead><tbody>${rows}</tbody></table>`
+      : '<div class="note">No items in this selection.</div>'}`;
+}
+
+async function saveStocktake(){
+  const items = stkItems().filter(i => stkKey(i) in stk.counts);
+  if(!items.length){ toast('Enter at least one count first'); return; }
+  const entries = items.map(i=>({tracker:TRACKER_TAB[i.tracker], code:i.code||i.barcode,
+    item:i.name, expected:i.qty, counted:stk.counts[stkKey(i)], store:i.loc||''}));
+  const variances = entries.filter(e=>e.counted!==e.expected).length;
+  if(!confirm('Save ' + stk.type + ' check: ' + entries.length + ' items, ' + variances +
+      ' variance(s)' + (stk.apply?' — stock will be adjusted to counted values.':'.'))) return;
+
+  if(stk.apply) items.forEach(i => i.qty = stk.counts[stkKey(i)]);   // optimistic
+  const saved = entries.length;
+  stk.counts = {};
+  render();
+  toast(stk.type + ' check saved — ' + saved + ' items');
+
+  if(LIVE){
+    try{
+      await api({action:'stocktake', checkType:stk.type, by:myName||'Unknown',
+                 apply:stk.apply, entries});
+    }catch(err){
+      toast('Not saved to sheet — ' + err.message);
+      loadAll();
+    }
+  }
+}
+
 /* ---------------- router ---------------- */
 function nav(view){ currentView=view; window._q=''; window._store=''; window._cat=''; render(); }
 document.querySelectorAll('nav a').forEach(a=>a.addEventListener('click',e=>{
@@ -621,6 +742,7 @@ function render(){
   else if(v==='log') m.innerHTML = logView();
   else if(v==='requests') m.innerHTML = requestsView();
   else if(v==='alerts') m.innerHTML = alertsView();
+  else if(v==='stocktake'){ m.innerHTML = stocktakeView(); paintStkSummary(); }
   else m.innerHTML = trackerView(v);
 }
 
