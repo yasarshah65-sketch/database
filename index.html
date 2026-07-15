@@ -14,6 +14,8 @@
   ============================================================ -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   :root{
     --pine:#0E5048;      /* primary — surgical scrub green   */
@@ -116,6 +118,22 @@
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--pine-deep);color:#fff;padding:11px 20px;border-radius:9px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:50}
   .toast.show{opacity:1}
 
+  /* ---------- printable labels ---------- */
+  #printArea{display:none}
+  .labelgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm;padding:6mm}
+  .label{border:1px dashed #bbb;border-radius:2mm;padding:3mm;text-align:center;
+         page-break-inside:avoid;display:flex;flex-direction:column;align-items:center;gap:1.5mm}
+  .label .ln{font-size:8pt;font-weight:600;line-height:1.15;max-height:20pt;overflow:hidden}
+  .label .lc{font-family:var(--mono);font-size:7pt}
+  .label svg{max-width:100%;height:11mm}
+  .label .qr{width:16mm;height:16mm}
+  .label .qr img,.label .qr canvas{width:16mm !important;height:16mm !important}
+  @media print{
+    body > .app, .toast, dialog{display:none !important}
+    #printArea{display:block !important}
+    @page{margin:8mm}
+  }
+
   .note{background:var(--amber-bg);border:1px solid #EAD9B0;color:var(--exp);border-radius:9px;padding:10px 14px;font-size:13px;margin-bottom:16px}
 
   /* ---------- mobile ---------- */
@@ -216,6 +234,7 @@
     <a href="#alerts" data-view="alerts">Alerts</a>
     <div class="navsec">Checks</div>
     <a href="#stocktake" data-view="stocktake">Stocktake</a>
+    <a href="#labels" data-view="labels">Labels</a>
   </nav>
 
   <main id="main"></main>
@@ -253,8 +272,44 @@
     <div class="m-row"><label for="linkSearch">Item</label><input id="linkSearch" type="search" placeholder="Type to search all trackers…" oninput="renderLinkList()"></div>
     <div id="linkList" style="max-height:200px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"></div>
   </div>
-  <div class="m-actions"><button class="btn" onclick="linkDlg.close()">Cancel</button></div>
+  <div class="m-actions">
+    <button class="btn" onclick="linkDlg.close()">Cancel</button>
+    <button class="btn primary" onclick="openAdd(linkDlg.dataset.code); linkDlg.close()">＋ Add as new item</button>
+  </div>
 </dialog>
+
+<dialog id="addDlg">
+  <div class="m-head">Add new item</div>
+  <div class="m-body">
+    <div class="m-row"><label for="adTracker">Tracker</label>
+      <select id="adTracker">
+        <option value="consumables">Consumables</option>
+        <option value="meds">Medicines</option>
+        <option value="garments">Garments</option>
+        <option value="linen">Linen</option>
+        <option value="instruments">Instruments</option>
+      </select></div>
+    <div class="m-row"><label for="adName">Name *</label><input id="adName" type="text" placeholder="e.g. 4-0 Vicryl"></div>
+    <div class="m-row"><label for="adCat">Category</label><input id="adCat" type="text" placeholder="e.g. Theatre"></div>
+    <div class="m-row"><label for="adSup">Supplier</label><input id="adSup" type="text"></div>
+    <div class="m-row"><label for="adLoc">Location</label><input id="adLoc" type="text" placeholder="e.g. Stock Room 1"></div>
+    <div class="m-row"><label for="adCode">Code</label><input id="adCode" type="text" placeholder="Supplier / CSSD code (optional)"></div>
+    <div class="m-row"><label for="adBar">Barcode</label>
+      <input id="adBar" type="text" placeholder="Scanned or generated">
+      <button class="btn" style="padding:8px 10px" onclick="$('#adBar').value=genCode($('#adTracker').value)" title="Generate a Bollin code">Generate</button></div>
+    <div class="m-row"><label for="adUnit">Unit</label><input id="adUnit" type="text" value="Each"></div>
+    <div class="m-row"><label for="adQty">Initial qty</label><input id="adQty" type="number" min="0" value="0"></div>
+    <div class="m-row"><label for="adRo">Reorder level</label><input id="adRo" type="number" min="0" value="1"></div>
+    <div class="m-row"><label for="adCost">Unit cost £</label><input id="adCost" type="number" min="0" step="0.01" placeholder="Optional"></div>
+    <div class="m-row"><label for="adExp">Expiry</label><input id="adExp" type="date"></div>
+  </div>
+  <div class="m-actions">
+    <button class="btn" onclick="addDlg.close()">Cancel</button>
+    <button class="btn primary" onclick="saveNewItem()">Add item</button>
+  </div>
+</dialog>
+
+<div id="printArea"></div>
 
 <div class="toast" id="toast"></div>
 
@@ -341,7 +396,7 @@ document.addEventListener('keydown', e => {
   if(e.target.matches('input,select,textarea')) {
     // typing in a form field: still allow scans — bursts are distinguishable,
     // but keep it simple in v1: ignore while a dialog is open
-    if($('#moveDlg').open || $('#linkDlg').open) return;
+    if($('#moveDlg').open || $('#linkDlg').open || $('#addDlg').open) return;
   }
   const now = Date.now();
   if(now - lastKey > 80) buf='';
@@ -505,6 +560,7 @@ function trackerView(key){
         <option value="">All categories</option>
         ${cats.map(c=>`<option ${c===ct?'selected':''}>${c}</option>`).join('')}
       </select>
+      <button class="btn" onclick="openAdd('')">＋ Add item</button>
     </div>
     ${tableFor(items,{expiry: key!=='garments' && key!=='instruments'})}`;
 }
@@ -724,6 +780,140 @@ async function saveStocktake(){
   }
 }
 
+/* ---------------- add new item ---------------- */
+function openAdd(scannedCode){
+  ['adName','adCat','adSup','adLoc','adCode','adCost','adExp'].forEach(id=>$('#'+id).value='');
+  $('#adUnit').value='Each'; $('#adQty').value=0; $('#adRo').value=1;
+  $('#adBar').value = scannedCode || '';
+  if(currentView in TRACKER_TAB) $('#adTracker').value = currentView;
+  addDlg.showModal();
+  $('#adName').focus();
+}
+async function saveNewItem(){
+  const name = $('#adName').value.trim();
+  if(!name){ toast('Name is required'); return; }
+  const tracker = $('#adTracker').value;
+  const it = {tracker, _row:null,
+    code:$('#adCode').value.trim(), barcode:$('#adBar').value.trim(),
+    name, cat:$('#adCat').value.trim(), supplier:$('#adSup').value.trim(),
+    loc:$('#adLoc').value.trim(), unit:$('#adUnit').value.trim()||'Each',
+    qty:Math.max(0,parseInt($('#adQty').value||'0',10)),
+    reorder:Math.max(0,parseInt($('#adRo').value||'0',10)),
+    cost:$('#adCost').value?Number($('#adCost').value):null,
+    expiry:$('#adExp').value||null, batch:'', status: tracker==='instruments'?'At Bollin':''};
+  if(!it.code && !it.barcode){ it.barcode = genCode(tracker); }
+  state.items.push(it);
+  if(it.barcode) state.barcodeLinks[it.barcode] = state.items.length-1;
+  addDlg.close();
+  toast('Added: '+name);
+  render();
+  if(LIVE){
+    try{
+      await api({action:'addItem', tracker:TRACKER_TAB[tracker], fields:{
+        Code:it.code, Barcode:it.barcode, Name:it.name, Category:it.cat,
+        Supplier:it.supplier, Location:it.loc, Unit:it.unit, Qty:it.qty,
+        ReorderLevel:it.reorder, UnitCost:it.cost, Expiry:it.expiry, Status:it.status}});
+      loadAll();   // pick up the sheet row number
+    }catch(err){ toast('Not saved to sheet — '+err.message); }
+  }
+}
+
+/* ---------------- barcode generation & labels ---------------- */
+const CODE_PREFIX = {consumables:'CON',meds:'MED',garments:'GAR',instruments:'INS',linen:'LIN'};
+function genCode(tracker){
+  const pre = 'BC-' + (CODE_PREFIX[tracker]||'ITM') + '-';
+  let max = 0;
+  state.items.forEach(i=>{
+    [i.code,i.barcode].forEach(c=>{
+      if(c && String(c).startsWith(pre)){
+        const n = parseInt(String(c).slice(pre.length),10);
+        if(n>max) max=n;
+      }
+    });
+  });
+  return pre + String(max+1).padStart(4,'0');
+}
+
+const lbl = {tracker:'meds', missingOnly:true, format:'barcode'};
+function lblItems(){
+  return state.items.filter(i => i.tracker===lbl.tracker &&
+    (!lbl.missingOnly || !i.barcode));
+}
+function labelsView(){
+  const trackers = ['consumables','meds','garments','instruments','linen'];
+  const items = lblItems();
+  const missing = state.items.filter(i=>i.tracker===lbl.tracker && !i.barcode).length;
+  const rows = items.slice(0,400).map(it=>`<tr>
+      <td data-label=""><strong>${it.name}</strong></td>
+      <td class="code" data-label="Code">${it.code||'—'}</td>
+      <td class="code" data-label="Barcode">${it.barcode||'<span style="color:var(--amber)">none</span>'}</td>
+      <td data-label="Location">${it.loc||'—'}</td></tr>`).join('');
+  return `
+    <h1>Labels</h1>
+    <div class="sub">Generate Bollin codes for items without a barcode, then print labels to stick on shelves, boxes or bags.
+      Scanning a printed label works exactly like a manufacturer barcode.</div>
+    <div class="toolrow">
+      <select onchange="lbl.tracker=this.value;render()">
+        ${trackers.map(t=>`<option value="${t}" ${t===lbl.tracker?'selected':''}>${TRACKER_LABEL[t]}</option>`).join('')}
+      </select>
+      <select onchange="lbl.missingOnly=this.value==='1';render()">
+        <option value="1" ${lbl.missingOnly?'selected':''}>Without barcode only (${missing})</option>
+        <option value="0" ${!lbl.missingOnly?'selected':''}>All items</option>
+      </select>
+      <select onchange="lbl.format=this.value">
+        <option value="barcode" ${lbl.format==='barcode'?'selected':''}>Barcode (Code 128)</option>
+        <option value="qr" ${lbl.format==='qr'?'selected':''}>QR code</option>
+      </select>
+    </div>
+    <div class="toolrow">
+      <button class="btn" onclick="assignCodes()">Generate codes for ${missing} item(s) without barcode</button>
+      <button class="btn primary" onclick="printLabels()">Print labels for this list</button>
+    </div>
+    ${tableForLabels(rows, items.length)}`;
+}
+function tableForLabels(rows, n){
+  return `<table><thead><tr><th>Item</th><th>Code</th><th>Barcode</th><th>Location</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="4" style="color:var(--ink-soft)">Nothing here — every item in this view has a barcode. Switch to "All items" to reprint labels.</td></tr>'}</tbody></table>
+    ${n>400?'<div class="sub">Showing first 400.</div>':''}`;
+}
+async function assignCodes(){
+  const targets = state.items.filter(i=>i.tracker===lbl.tracker && !i.barcode);
+  if(!targets.length){ toast('Every item here already has a barcode'); return; }
+  if(!confirm('Generate Bollin codes for '+targets.length+' item(s)?')) return;
+  const entries = [];
+  targets.forEach(it=>{
+    it.barcode = genCode(it.tracker);
+    state.barcodeLinks[it.barcode] = state.items.indexOf(it);
+    entries.push({tracker:TRACKER_TAB[it.tracker], code:it.code||it.name, barcode:it.barcode});
+  });
+  render();
+  toast(entries.length+' codes generated');
+  if(LIVE){
+    try{ await api({action:'setBarcodes', entries}); toast('Saved to sheet'); }
+    catch(err){ toast('Not saved to sheet — '+err.message); }
+  }
+}
+function printLabels(){
+  const items = lblItems().filter(i=>i.barcode);
+  if(!items.length){ toast('No items with barcodes in this list'); return; }
+  const area = $('#printArea');
+  area.innerHTML = '<div class="labelgrid">' + items.map((it,ix)=>`
+    <div class="label">
+      <div class="ln">${it.name}</div>
+      ${lbl.format==='qr' ? `<div class="qr" id="qr${ix}"></div>` : `<svg id="bc${ix}"></svg>`}
+      <div class="lc">${it.barcode}</div>
+    </div>`).join('') + '</div>';
+  items.forEach((it,ix)=>{
+    try{
+      if(lbl.format==='qr') new QRCode(document.getElementById('qr'+ix),
+        {text:String(it.barcode), width:64, height:64, correctLevel:QRCode.CorrectLevel.M});
+      else JsBarcode('#bc'+ix, String(it.barcode),
+        {format:'CODE128', displayValue:false, margin:0, height:34});
+    }catch(e){}
+  });
+  setTimeout(()=>window.print(), 300);
+}
+
 /* ---------------- router ---------------- */
 function nav(view){ currentView=view; window._q=''; window._store=''; window._cat=''; render(); }
 document.querySelectorAll('nav a').forEach(a=>a.addEventListener('click',e=>{
@@ -743,6 +933,7 @@ function render(){
   else if(v==='requests') m.innerHTML = requestsView();
   else if(v==='alerts') m.innerHTML = alertsView();
   else if(v==='stocktake'){ m.innerHTML = stocktakeView(); paintStkSummary(); }
+  else if(v==='labels') m.innerHTML = labelsView();
   else m.innerHTML = trackerView(v);
 }
 
