@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bollin Clinic — Inventory</title>
+<!-- ============================================================
+  BOLLIN CLINIC INVENTORY  ·  v0.1
+  Single-file app for GitHub Pages.
+  Scanner: Netum USB dongle (keyboard wedge). The app listens for
+  scanner input globally — no field needs to be focused.
+  Data: demo data below until Azure AD consent is granted, then
+  Microsoft Graph reads/writes the SharePoint Excel files.
+  ============================================================ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pine:#0E5048;      /* primary — surgical scrub green   */
+    --pine-deep:#0A3B35;
+    --mist:#F4F7F6;      /* app background                   */
+    --card:#FFFFFF;
+    --ink:#17251F;
+    --ink-soft:#5B6B65;
+    --line:#DCE5E2;
+    --amber:#9A5B00;     /* low stock                        */
+    --amber-bg:#FFF4E0;
+    --red:#A61B1B;       /* out of stock / expired           */
+    --red-bg:#FCE9E7;
+    --ok:#0E5048;
+    --ok-bg:#E4F0ED;
+    --exp:#7A4A00;
+    --exp-bg:#FFF0D6;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --sans:'IBM Plex Sans',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--sans);background:var(--mist);color:var(--ink);font-size:15px}
+  button{font-family:inherit;cursor:pointer}
+  input,select{font-family:inherit;font-size:14px}
+
+  /* ---------- layout ---------- */
+  .app{display:grid;grid-template-columns:216px 1fr;grid-template-rows:auto 1fr;height:100vh}
+  header.scanbar{grid-column:1/-1;background:var(--pine-deep);color:#fff;display:flex;align-items:center;gap:14px;padding:10px 18px}
+  .brand{font-weight:700;letter-spacing:.4px;white-space:nowrap}
+  .brand small{display:block;font-weight:400;font-size:10px;opacity:.65;letter-spacing:1.4px;text-transform:uppercase}
+  .scanwrap{flex:1;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:7px 12px;max-width:560px}
+  .pulse{width:9px;height:9px;border-radius:50%;background:#7FD8C4;animation:pulse 1.6s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  @media (prefers-reduced-motion:reduce){.pulse{animation:none}}
+  #scanInput{font-family:var(--mono);font-size:13px;color:#FFFFFF;background:transparent;border:none;outline:none;flex:1;min-width:0}
+  #scanInput::placeholder{color:#CFE8E0;opacity:.9}
+  #scanEcho{font-family:var(--mono);font-size:12px;color:#9ED2C4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38%}
+  .userbox{font-size:12px;opacity:.85;text-align:right}
+  .userbox button{background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:6px;padding:4px 10px;font-size:12px}
+
+  nav{background:var(--card);border-right:1px solid var(--line);padding:14px 0;overflow-y:auto}
+  nav a{display:flex;align-items:center;gap:10px;padding:9px 18px;color:var(--ink-soft);text-decoration:none;font-weight:500;font-size:14px;border-left:3px solid transparent}
+  nav a.active{color:var(--pine);border-left-color:var(--pine);background:var(--ok-bg)}
+  nav a:hover{color:var(--pine)}
+  nav .navsec{padding:14px 18px 4px;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--ink-soft)}
+  nav a:focus-visible{outline:2px solid var(--pine);outline-offset:-2px}
+
+  main{overflow-y:auto;padding:22px 26px}
+  h1{font-size:20px;font-weight:700;margin-bottom:2px}
+  .sub{color:var(--ink-soft);font-size:13px;margin-bottom:18px}
+
+  /* ---------- dashboard tiles ---------- */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:22px}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .15s}
+  .tile:hover{border-color:var(--pine)}
+  .tile .n{font-size:26px;font-weight:700;font-family:var(--mono)}
+  .tile .l{font-size:12px;color:var(--ink-soft);margin-top:2px}
+  .tile.warn .n{color:var(--amber)} .tile.bad .n{color:var(--red)} .tile.exp .n{color:var(--exp)}
+
+  /* ---------- tables ---------- */
+  .toolrow{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+  .toolrow input[type=search]{flex:1;min-width:180px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+  .toolrow select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13.5px}
+  thead th{text-align:left;font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--ink-soft);padding:10px 12px;border-bottom:1px solid var(--line);background:#FAFCFB}
+  tbody td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#F6FAF8}
+  td.code,td.qty{font-family:var(--mono);font-size:12.5px}
+  td.qty{text-align:right}
+  th.qty{text-align:right}
+  .badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11.5px;font-weight:600}
+  .b-ok{background:var(--ok-bg);color:var(--ok)}
+  .b-low{background:var(--amber-bg);color:var(--amber)}
+  .b-out{background:var(--red-bg);color:var(--red)}
+  .b-exp{background:var(--exp-bg);color:var(--exp)}
+  .rowbtns button{border:1px solid var(--line);background:var(--card);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;color:var(--pine)}
+  .rowbtns button:hover{background:var(--ok-bg)}
+
+  /* ---------- modal ---------- */
+  dialog{border:none;border-radius:12px;padding:0;max-width:430px;width:92vw;box-shadow:0 18px 50px rgba(10,40,35,.25)}
+  dialog::backdrop{background:rgba(14,60,53,.45)}
+  .m-head{background:var(--pine);color:#fff;padding:14px 18px;font-weight:600}
+  .m-body{padding:18px}
+  .m-body .itname{font-weight:600;margin-bottom:2px}
+  .m-body .itcode{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin-bottom:14px}
+  .m-row{display:flex;gap:10px;margin-bottom:12px;align-items:center}
+  .m-row label{width:96px;font-size:13px;color:var(--ink-soft)}
+  .m-row input,.m-row select{flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
+  .m-actions{display:flex;gap:10px;justify-content:flex-end;padding:0 18px 18px}
+  .btn{border-radius:8px;padding:9px 16px;font-weight:600;font-size:14px;border:1px solid var(--line);background:var(--card)}
+  .btn.primary{background:var(--pine);color:#fff;border-color:var(--pine)}
+  .btn.primary:hover{background:var(--pine-deep)}
+  .segbtn{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:1}
+  .segbtn button{flex:1;padding:8px 0;background:var(--card);border:none;font-weight:600;color:var(--ink-soft)}
+  .segbtn button.on-in{background:var(--ok-bg);color:var(--ok)}
+  .segbtn button.on-out{background:var(--red-bg);color:var(--red)}
+
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--pine-deep);color:#fff;padding:11px 20px;border-radius:9px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:50}
+  .toast.show{opacity:1}
+
+  .note{background:var(--amber-bg);border:1px solid #EAD9B0;color:var(--exp);border-radius:9px;padding:10px 14px;font-size:13px;margin-bottom:16px}
+
+  /* ---------- mobile ---------- */
+  @media (max-width:760px){
+    body{font-size:16px}                          /* comfortable reading size */
+    .app{grid-template-columns:1fr;grid-template-rows:auto auto 1fr}
+
+    header.scanbar{flex-wrap:wrap;gap:8px;padding:10px 12px;position:sticky;top:0;z-index:20}
+    .brand{font-size:15px}
+    .scanwrap{order:3;flex-basis:100%;max-width:none;padding:9px 12px}
+    #scanEcho{font-size:12px}
+    .userbox{margin-left:auto}
+    .userbox div{display:none}                    /* keep just the button */
+
+    nav{display:flex;overflow-x:auto;border-right:none;border-bottom:1px solid var(--line);
+        padding:0 6px;position:sticky;top:0;z-index:15;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    nav::-webkit-scrollbar{display:none}
+    nav .navsec{display:none}
+    nav a{border-left:none;border-bottom:3px solid transparent;white-space:nowrap;padding:12px 13px;font-size:14px}
+    nav a.active{border-bottom-color:var(--pine);background:none}
+
+    main{padding:14px 12px 90px}
+    h1{font-size:18px}
+
+    .tiles{grid-template-columns:1fr 1fr;gap:9px}
+    .tile{padding:12px 13px}
+    .tile .n{font-size:22px}
+
+    .toolrow{gap:8px}
+    .toolrow input[type=search]{flex-basis:100%;padding:11px 13px;font-size:16px}
+    .toolrow select{flex:1;padding:11px 10px;font-size:15px}
+    .toolrow input[type=number],.toolrow input[type=text]{padding:11px 12px !important;font-size:16px}
+    .toolrow input[type=text]{flex:1;min-width:120px}
+    .toolrow .btn{flex-basis:100%;padding:12px 0}
+
+    /* tables become stacked cards */
+    table,tbody,tr,td{display:block;width:100%}
+    thead{display:none}
+    table{background:none;border:none}
+    tbody tr{background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:10px;padding:12px 14px}
+    tbody tr:hover{background:var(--card)}
+    tbody td{border:none;padding:3px 0;display:flex;justify-content:space-between;gap:12px;align-items:baseline;font-size:14.5px}
+    tbody td::before{content:attr(data-label);font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-soft);flex-shrink:0}
+    tbody td[data-label=""]::before{display:none}
+    tbody td:first-child{font-size:16px;padding-bottom:6px}
+    td.qty{text-align:right}
+    td.code{font-size:12.5px}
+    .rowbtns{padding-top:10px}
+    .rowbtns button{width:100%;padding:11px 0;font-size:15px;border-radius:8px}
+
+    /* dialogs become bottom sheets */
+    dialog{width:100vw;max-width:none;margin:auto 0 0 0;border-radius:16px 16px 0 0;
+           max-height:88vh;overflow-y:auto}
+    .m-row{flex-wrap:wrap}
+    .m-row label{width:100%}
+    .m-row input,.m-row select{padding:12px;font-size:16px}   /* 16px stops iOS zoom */
+    .segbtn button{padding:13px 0;font-size:15px}
+    .m-actions{position:sticky;bottom:0;background:var(--card);padding:12px 18px 16px}
+    .btn{padding:13px 18px;font-size:15px}
+
+    .toast{bottom:14px;width:calc(100vw - 28px);text-align:center}
+  }
+  @media (max-width:400px){
+    .tiles{grid-template-columns:1fr 1fr}
+    .tile .n{font-size:20px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="scanbar">
+    <div class="brand">Bollin Clinic<small>Inventory</small></div>
+    <div class="scanwrap" title="Netum scanner is captured anywhere in the app">
+      <span class="pulse" aria-hidden="true"></span>
+      <input id="scanInput" data-scan="1" type="text" autocomplete="off" enterkeyhint="go"
+             placeholder="Ready to scan — or tap to type a code" aria-label="Scan or type a barcode">
+      <span id="scanEcho"></span>
+    </div>
+    <div class="userbox">
+      <div id="userName"></div>
+      <button id="nameBtn" onclick="setMyName()">Set my name</button>
+    </div>
+  </header>
+
+  <nav id="nav" aria-label="Sections">
+    <div class="navsec">Overview</div>
+    <a href="#dashboard" data-view="dashboard" class="active">Dashboard</a>
+    <div class="navsec">Trackers</div>
+    <a href="#consumables" data-view="consumables">Consumables</a>
+    <a href="#meds" data-view="meds">Medicines</a>
+    <a href="#garments" data-view="garments">Garments</a>
+    <a href="#instruments" data-view="instruments">Instruments</a>
+    <a href="#linen" data-view="linen">Linen</a>
+    <div class="navsec">Activity</div>
+    <a href="#log" data-view="log">Transaction log</a>
+    <a href="#requests" data-view="requests">Requests</a>
+    <a href="#alerts" data-view="alerts">Alerts</a>
+  </nav>
+
+  <main id="main"></main>
+</div>
+
+<dialog id="moveDlg">
+  <div class="m-head" id="dlgTitle">Stock movement</div>
+  <div class="m-body">
+    <div class="itname" id="dlgName"></div>
+    <div class="itcode" id="dlgCode"></div>
+    <div class="m-row">
+      <label>Direction</label>
+      <div class="segbtn">
+        <button id="segIn"  onclick="setDir('in')">Stock in</button>
+        <button id="segOut" onclick="setDir('out')">Stock out</button>
+      </div>
+    </div>
+    <div class="m-row"><label for="dlgQty">Quantity</label><input id="dlgQty" type="number" min="1" value="1"></div>
+    <div class="m-row" id="rowBatch"><label for="dlgBatch">Batch no.</label><input id="dlgBatch" type="text" placeholder="Optional"></div>
+    <div class="m-row" id="rowExp"><label for="dlgExp">Expiry</label><input id="dlgExp" type="date"></div>
+    <div class="m-row"><label for="dlgBy">Recorded by</label><input id="dlgBy" type="text" placeholder="Your name"></div>
+  </div>
+  <div class="m-actions">
+    <button class="btn" onclick="moveDlg.close()">Cancel</button>
+    <button class="btn primary" id="dlgSave" onclick="saveMove()">Save movement</button>
+  </div>
+</dialog>
+
+<dialog id="linkDlg">
+  <div class="m-head">Unknown barcode</div>
+  <div class="m-body">
+    <div class="itcode" id="linkCode" style="margin-bottom:12px"></div>
+    <p style="font-size:13.5px;color:var(--ink-soft);margin-bottom:12px">
+      This barcode isn't linked to an item yet. Choose the item it belongs to and the link is saved for every future scan.</p>
+    <div class="m-row"><label for="linkSearch">Item</label><input id="linkSearch" type="search" placeholder="Type to search all trackers…" oninput="renderLinkList()"></div>
+    <div id="linkList" style="max-height:200px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"></div>
+  </div>
+  <div class="m-actions"><button class="btn" onclick="linkDlg.close()">Cancel</button></div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =============================================================
+   CONFIG — paste your Apps Script Web App URL here (ends /exec).
+   Leave empty to run in demo mode with sample data.
+   ============================================================= */
+const CONFIG = {
+  API_URL: ""   // e.g. "https://script.google.com/macros/s/AKfyc.../exec"
+};
+const TRACKER_TAB = {consumables:'Consumables',meds:'Meds',garments:'Garments',instruments:'Instruments',linen:'Linen'};
+
+/* =============================================================
+   DEMO DATA — real rows sampled from the Bollin trackers so the
+   app is testable today. Replaced by Graph reads once connected.
+   ============================================================= */
+const state = {
+  items: [
+    // ---- consumables (tracker:'consumables')
+    {tracker:'consumables',cat:'Theatre',name:'0 Stratafix',supplier:'Ethicon',code:'SXPP1A406',barcode:'',expiry:'2026-10-31',qty:1,unit:'Box',reorder:1,loc:'Stock Room 1',cost:null},
+    {tracker:'consumables',cat:'Theatre',name:'100cm Extension Connect-A-Set 3',supplier:'Vygon',code:'70141.1',barcode:'',expiry:null,qty:7,unit:'Each',reorder:4,loc:'Stock Room 2',cost:null},
+    {tracker:'consumables',cat:'Theatre',name:'3-Way Giving Set',supplier:'AMS',code:'7320BL',barcode:'',expiry:'2030-10-06',qty:21,unit:'Each',reorder:10,loc:'Stock Room 2',cost:null},
+    {tracker:'consumables',cat:'Theatre',name:'5-0 Prolene',supplier:'Ethicon',code:'8934H',barcode:'',expiry:'2030-10-31',qty:0,unit:'Box',reorder:1,loc:'Stock Room 1',cost:null},
+    {tracker:'consumables',cat:'Theatre',name:'Activon Tube',supplier:'Mediq',code:'CR4493',barcode:'',expiry:'2028-12-27',qty:7,unit:'Each',reorder:5,loc:'Stock Room 1',cost:null},
+    {tracker:'consumables',cat:'Ward',name:'Anti-Embolism Stocking Medium',supplier:'Lipoelastic',code:'LIPO0101-M-W',barcode:'',expiry:'2032-10-24',qty:10,unit:'Box',reorder:4,loc:'Stock Room 1',cost:null},
+    {tracker:'consumables',cat:'Ward',name:'Aquacel Ag+ Extra 5x5cm',supplier:'Alliance',code:'413566',barcode:'',expiry:'2028-11-26',qty:2,unit:'Each',reorder:2,loc:'Stock Room 1',cost:null},
+    {tracker:'consumables',cat:'Theatre',name:'Adhesive Op Towel 90 x 75cm',supplier:'Mediq',code:'906677',barcode:'',expiry:'2030-10-28',qty:34,unit:'Each',reorder:20,loc:'Stock Room 1',cost:null},
+    {tracker:'consumables',cat:'Theatre',name:'Chloraprep Stick Clear 3ml',supplier:'Mediq',code:'CHP3ML',barcode:'',expiry:'2026-08-30',qty:16,unit:'Each',reorder:6,loc:'COSHH Cupboard',cost:null},
+    // ---- medicines
+    {tracker:'meds',cat:'Emergency',name:'Adrenaline (Epinephrine) 1:10,000 injection',supplier:'',code:'',barcode:'',expiry:null,qty:9,unit:'Each',reorder:5,loc:'Cabinet 4-TH2',cost:null,batch:''},
+    {tracker:'meds',cat:'Emergency',name:'Amiodarone 30mg/ml injection 10 mls',supplier:'',code:'',barcode:'',expiry:null,qty:5,unit:'Each',reorder:5,loc:'Cabinet 4-TH2',cost:null,batch:''},
+    {tracker:'meds',cat:'',name:'Atracurium Besilate 50mg in 5ml Amps',supplier:'',code:'',barcode:'',expiry:null,qty:5,unit:'Each',reorder:2,loc:'Theatre 2 Fridge',cost:null,batch:''},
+    {tracker:'meds',cat:'Emergency',name:'Bupivacaine 0.25% injection 10ml',supplier:'',code:'',barcode:'',expiry:null,qty:90,unit:'Each',reorder:100,loc:'Cabinet 13-TH2',cost:null,batch:''},
+    {tracker:'meds',cat:'',name:'Cefuroxime 1.5g powder for injection',supplier:'',code:'',barcode:'',expiry:null,qty:180,unit:'Each',reorder:60,loc:'Cabinet 4-TH2',cost:null,batch:''},
+    {tracker:'meds',cat:'',name:'Botox Powder for Solution for Injection',supplier:'',code:'',barcode:'',expiry:'2026-09-15',qty:4,unit:'Each',reorder:2,loc:'Theatre 2 Fridge',cost:null,batch:''},
+    // ---- garments
+    {tracker:'garments',cat:'Abdo Garment',name:'VH Variant Abdo Garment L Black',supplier:'',code:'LIP00003-L-B',barcode:'LIP00003-L-B',expiry:null,qty:5,unit:'Each',reorder:2,loc:'Garment Store',cost:null},
+    {tracker:'garments',cat:'Abdo Garment',name:'VF Variant Abdo Garment M Black',supplier:'',code:'LIP00010-M-B',barcode:'LIP00010-M-B',expiry:null,qty:5,unit:'Each',reorder:2,loc:'Garment Store',cost:null},
+    {tracker:'garments',cat:'Binder',name:'KP Special Binder M White',supplier:'',code:'LIP00092-M-W',barcode:'LIP00092-M-W',expiry:null,qty:6,unit:'Each',reorder:2,loc:'Garment Store',cost:null},
+    {tracker:'garments',cat:'Bra',name:'PI Elite Bra 34BC Black',supplier:'',code:'LIP05003-34BC-B',barcode:'LIP05003-34BC-B',expiry:null,qty:4,unit:'Each',reorder:2,loc:'Garment Store',cost:null},
+    // ---- instruments (CSSD codes)
+    {tracker:'instruments',cat:'Tray',name:'Basic Plastic Tray',supplier:'',code:'SET03488-006',barcode:'SET03488-006',expiry:null,qty:1,unit:'Tray',reorder:0,loc:'Bollin',cost:null,status:'At Bollin'},
+    {tracker:'instruments',cat:'Instrument',name:'Light Handle',supplier:'',code:'SIN07949-031',barcode:'SIN07949-031',expiry:null,qty:1,unit:'Each',reorder:0,loc:'Bollin',cost:null,status:'At Bollin'},
+    {tracker:'instruments',cat:'Instrument',name:'Freeman Areola Marker',supplier:'',code:'SIN08457',barcode:'SIN08457',expiry:null,qty:1,unit:'Each',reorder:0,loc:'Bollin',cost:null,status:'At Bollin'},
+    {tracker:'instruments',cat:'Instrument',name:'LIPO Handle',supplier:'',code:'SIN08438-06',barcode:'SIN08438-06',expiry:null,qty:1,unit:'Each',reorder:0,loc:'Bollin',cost:null,status:'At Countess'},
+    // ---- linen
+    {tracker:'linen',cat:'Theatre Linen',name:'Theatre Drape Green Large',supplier:'',code:'BC-LIN-001',barcode:'BC-LIN-001',expiry:null,qty:24,unit:'Each',reorder:10,loc:'Linen Cupboard',cost:8.50}
+  ],
+  log: [],          // {ts,dir,name,code,qty,by,tracker,batch,expiry}
+  requests: [],     // {ts,by,item,qty,status}
+  barcodeLinks: {}  // scanned barcode -> item index (persisted server-side in v2)
+};
+
+const TRACKER_LABEL = {consumables:'Consumables',meds:'Medicines',garments:'Garments',instruments:'Instruments',linen:'Linen'};
+let currentView = 'dashboard';
+let dlgItem = null, dlgDir = 'out';
+
+/* ---------------- helpers ---------------- */
+const $ = s => document.querySelector(s);
+const fmt = n => n==null?'—':n;
+function daysTo(d){ if(!d) return null; return Math.round((new Date(d) - new Date())/86400000); }
+function statusOf(it){
+  if(it.tracker==='instruments') return it.status==='At Countess' ? {t:'At Countess',c:'b-exp'} : {t:'At Bollin',c:'b-ok'};
+  if(it.qty===0) return {t:'Out of stock',c:'b-out'};
+  if(it.qty<=it.reorder) return {t:'Low stock',c:'b-low'};
+  return {t:'OK',c:'b-ok'};
+}
+function expBadge(it){
+  const d = daysTo(it.expiry);
+  if(d==null) return '';
+  if(d<0)   return '<span class="badge b-out">Expired</span>';
+  if(d<=90) return `<span class="badge b-exp">${d}d left</span>`;
+  return '';
+}
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+
+/* ---------------- scanner capture (Netum keyboard wedge) ----------------
+   Scanners type fast (<35ms between keys) and finish with Enter.
+   We buffer keys globally; a fast burst ending in Enter = a scan.       */
+let buf='', lastKey=0;
+document.addEventListener('keydown', e => {
+  if(e.target.id === 'scanInput') return;          // handled by its own listener
+  if(e.target.matches('input,select,textarea')) {
+    // typing in a form field: still allow scans — bursts are distinguishable,
+    // but keep it simple in v1: ignore while a dialog is open
+    if($('#moveDlg').open || $('#linkDlg').open) return;
+  }
+  const now = Date.now();
+  if(now - lastKey > 80) buf='';
+  lastKey = now;
+  if(e.key === 'Enter'){
+    if(buf.length >= 4) handleScan(buf);
+    buf='';
+  } else if(e.key.length === 1){
+    buf += e.key;
+  }
+});
+// tappable scan field (mobile / manual entry)
+document.getElementById('scanInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter'){
+    const code = e.target.value.trim();
+    e.target.value = '';
+    if(code.length >= 2) handleScan(code);
+  }
+});
+function handleScan(code){
+  $('#scanEcho').textContent = 'Scanned: ' + code;
+  // 1. direct match on barcode or code
+  let idx = state.items.findIndex(it => it.barcode===code || it.code===code);
+  // 2. learned link
+  if(idx<0 && code in state.barcodeLinks) idx = state.barcodeLinks[code];
+  if(idx>=0){ openMove(state.items[idx]); return; }
+  // 3. unknown -> link dialog
+  $('#linkCode').textContent = code;
+  linkDlg.returnValue=''; linkDlg.dataset.code=code;
+  $('#linkSearch').value=''; renderLinkList();
+  linkDlg.showModal();
+}
+function renderLinkList(){
+  const q = $('#linkSearch').value.toLowerCase();
+  const rows = state.items
+    .map((it,i)=>({it,i}))
+    .filter(x => !q || x.it.name.toLowerCase().includes(q) || (x.it.code||'').toLowerCase().includes(q))
+    .slice(0,30)
+    .map(x => `<div style="padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer" onclick="linkBarcode(${x.i})">
+        <strong>${x.it.name}</strong>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--ink-soft)"> ${x.it.code||''} · ${TRACKER_LABEL[x.it.tracker]}</span></div>`)
+    .join('');
+  $('#linkList').innerHTML = rows || '<div style="padding:12px;color:var(--ink-soft)">No matches.</div>';
+}
+function linkBarcode(i){
+  const code = linkDlg.dataset.code;
+  state.barcodeLinks[code] = i;
+  state.items[i].barcode = state.items[i].barcode || code;
+  linkDlg.close();
+  toast('Barcode linked to ' + state.items[i].name);
+  if(LIVE) api({action:'link', barcode:code, tracker:TRACKER_TAB[state.items[i].tracker],
+                code: state.items[i].code || code}).catch(e=>toast('Link not saved — '+e.message));
+  openMove(state.items[i]);
+}
+
+/* ---------------- stock movement ---------------- */
+function openMove(it){
+  dlgItem = it; setDir('out');
+  $('#dlgName').textContent = it.name;
+  $('#dlgCode').textContent = (it.code||'no code') + ' · ' + TRACKER_LABEL[it.tracker] + ' · ' + it.loc + ' · current: ' + it.qty + ' ' + it.unit;
+  $('#dlgQty').value = 1;
+  $('#dlgBatch').value=''; $('#dlgExp').value='';
+  $('#dlgBy').value = myName || '';
+  const meds = it.tracker==='meds' || it.tracker==='consumables';
+  $('#rowBatch').style.display = meds?'flex':'none';
+  $('#rowExp').style.display   = meds?'flex':'none';
+  moveDlg.showModal();
+  $('#dlgQty').select();
+}
+function setDir(d){
+  dlgDir=d;
+  $('#segIn').className  = d==='in' ? 'on-in' :'';
+  $('#segOut').className = d==='out'? 'on-out':'';
+  const isInstr = dlgItem && dlgItem.tracker==='instruments';
+  $('#dlgTitle').textContent = isInstr ? (d==='out'?'Dispatch to Countess':'Return to Bollin')
+                                       : (d==='in'?'Stock in':'Stock out');
+}
+async function saveMove(){
+  const q = Math.max(1, parseInt($('#dlgQty').value||'1',10));
+  const by = ($('#dlgBy').value.trim() || myName || 'Unknown');
+  if(!myName && $('#dlgBy').value.trim()){ myName=$('#dlgBy').value.trim();
+    try{localStorage.setItem('bollin_name',myName);}catch(e){} paintName(); }
+  const prevQty = dlgItem.qty, prevStatus = dlgItem.status;
+
+  if(dlgItem.tracker==='instruments'){
+    dlgItem.status = dlgDir==='out' ? 'At Countess' : 'At Bollin';
+  } else {
+    if(dlgDir==='out' && q>dlgItem.qty){ toast('Only '+dlgItem.qty+' in stock'); return; }
+    dlgItem.qty += (dlgDir==='in'? q : -q);
+    if(dlgDir==='in'){
+      if($('#dlgExp').value) dlgItem.expiry = $('#dlgExp').value;
+      if($('#dlgBatch').value) dlgItem.batch = $('#dlgBatch').value;
+    }
+  }
+  state.log.unshift({ts:new Date().toISOString(), dir:dlgDir, name:dlgItem.name, code:dlgItem.code,
+                     qty:q, by, tracker:dlgItem.tracker, batch:$('#dlgBatch').value, expiry:$('#dlgExp').value});
+  moveDlg.close();
+  toast((dlgDir==='in'?'+':'−')+q+' '+dlgItem.unit+' — '+dlgItem.name);
+  render();
+
+  if(LIVE){
+    try{
+      await api({action:'move', tracker:TRACKER_TAB[dlgItem.tracker],
+                 code: dlgItem.code || dlgItem.barcode, dir:dlgDir, qty:q, by,
+                 batch:$('#dlgBatch') ? $('#dlgBatch').value : '', expiry:$('#dlgExp') ? $('#dlgExp').value : ''});
+    }catch(err){
+      dlgItem.qty = prevQty; dlgItem.status = prevStatus; state.log.shift();
+      toast('Not saved — '+err.message); render();
+    }
+  }
+}
+
+/* ---------------- views ---------------- */
+function tableFor(items, opts={}){
+  const showExp = opts.expiry!==false;
+  const head = `<thead><tr>
+      <th>Item</th><th>Code</th><th>Category</th><th>Location</th>
+      ${showExp?'<th>Expiry</th>':''}<th class="qty">Qty</th><th>Status</th><th></th></tr></thead>`;
+  const rows = items.map(it=>{
+    const s = statusOf(it);
+    return `<tr>
+      <td data-label=""><strong>${it.name}</strong></td>
+      <td class="code" data-label="Code">${it.code||'—'}</td>
+      <td data-label="Category">${it.cat||'—'}</td>
+      <td data-label="Location">${it.loc||'—'}</td>
+      ${showExp?`<td data-label="Expiry">${it.expiry? new Date(it.expiry).toLocaleDateString('en-GB') : '—'} ${expBadge(it)}</td>`:''}
+      <td class="qty" data-label="Qty">${it.tracker==='instruments'?'—':it.qty+' '+it.unit}</td>
+      <td data-label="Status"><span class="badge ${s.c}">${s.t}</span></td>
+      <td class="rowbtns" data-label=""><button onclick='openMove(state.items[${state.items.indexOf(it)}])'>Move</button></td>
+    </tr>`;
+  }).join('');
+  return `<table>${head}<tbody>${rows||'<tr><td colspan="8" style="color:var(--ink-soft)">Nothing matches.</td></tr>'}</tbody></table>`;
+}
+
+function trackerView(key){
+  const all = state.items.filter(i=>i.tracker===key);
+  const stores = [...new Set(all.map(i=>i.loc).filter(Boolean))].sort();
+  const cats   = [...new Set(all.map(i=>i.cat).filter(Boolean))].sort();
+  const q  = (window._q ||'').toLowerCase();
+  const st = window._store||'', ct = window._cat||'';
+  const items = all.filter(i =>
+      (!q || i.name.toLowerCase().includes(q) || (i.code||'').toLowerCase().includes(q)) &&
+      (!st || i.loc===st) && (!ct || i.cat===ct));
+  return `
+    <h1>${TRACKER_LABEL[key]}</h1>
+    <div class="sub">${all.length} items · scan any barcode, or use Move</div>
+    <div class="toolrow">
+      <input type="search" placeholder="Search name or code…" value="${window._q||''}"
+             oninput="window._q=this.value;render()">
+      <select onchange="window._store=this.value;render()">
+        <option value="">All stores</option>
+        ${stores.map(s=>`<option ${s===st?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <select onchange="window._cat=this.value;render()">
+        <option value="">All categories</option>
+        ${cats.map(c=>`<option ${c===ct?'selected':''}>${c}</option>`).join('')}
+      </select>
+    </div>
+    ${tableFor(items,{expiry: key!=='garments' && key!=='instruments'})}`;
+}
+
+function dashboardView(){
+  const stock = state.items.filter(i=>i.tracker!=='instruments');
+  const low = stock.filter(i=>i.qty>0 && i.qty<=i.reorder);
+  const out = stock.filter(i=>i.qty===0);
+  const exp = stock.filter(i=>{const d=daysTo(i.expiry);return d!=null && d<=90;});
+  const away = state.items.filter(i=>i.tracker==='instruments' && i.status==='At Countess');
+  const val = stock.reduce((s,i)=> s + (i.cost!=null ? i.cost*i.qty : 0), 0);
+  const costed = stock.filter(i=>i.cost!=null).length;
+  return `
+    <h1>Dashboard</h1>
+    <div class="sub">Live position across all five trackers</div>
+    ${LIVE ? '' : '<div class="note">Demo mode — sample data only. Paste your Apps Script URL into CONFIG.API_URL to connect the live Google Sheet.</div>'}
+    <div class="tiles">
+      <div class="tile warn" onclick="nav('dash-low')"><div class="n">${low.length}</div><div class="l">Low stock items</div></div>
+      <div class="tile bad"  onclick="nav('dash-out')"><div class="n">${out.length}</div><div class="l">Out of stock</div></div>
+      <div class="tile exp"  onclick="nav('dash-exp')"><div class="n">${exp.length}</div><div class="l">Expiring ≤ 90 days</div></div>
+      <div class="tile"      onclick="nav('instruments')"><div class="n">${away.length}</div><div class="l">Instruments at Countess</div></div>
+      <div class="tile"><div class="n">£${val.toFixed(0)}</div><div class="l">Stock value (${costed} of ${stock.length} items costed)</div></div>
+    </div>
+    <h1 style="font-size:16px">Needs attention</h1>
+    <div class="sub">Low, out of stock and short-dated items across every tracker</div>
+    ${tableFor([...out,...low,...exp.filter(i=>!out.includes(i)&&!low.includes(i))])}`;
+}
+
+function listView(title, filter){
+  return `<h1>${title}</h1><div class="sub">&nbsp;</div>` + tableFor(state.items.filter(filter));
+}
+
+function logView(){
+  const rows = state.log.map(l=>`<tr>
+      <td data-label=""><strong>${l.name}</strong></td>
+      <td data-label="Direction"><span class="badge ${l.dir==='in'?'b-ok':'b-out'}">${l.dir==='in'?'IN':'OUT'}</span></td>
+      <td data-label="When">${new Date(l.ts).toLocaleString('en-GB')}</td>
+      <td class="code" data-label="Code">${l.code||'—'}</td>
+      <td class="qty" data-label="Qty">${l.qty}</td>
+      <td data-label="By">${l.by}</td>
+      <td data-label="Tracker">${TRACKER_LABEL[l.tracker]}</td></tr>`).join('');
+  return `<h1>Transaction log</h1><div class="sub">${state.log.length} movements this session (written to SharePoint in v2)</div>
+    <table><thead><tr><th>Item</th><th>Dir</th><th>When</th><th>Code</th><th class="qty">Qty</th><th>By</th><th>Tracker</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="7" style="color:var(--ink-soft)">No movements yet — scan something to start.</td></tr>'}</tbody></table>`;
+}
+
+function requestsView(){
+  const opts = state.items.filter(i=>i.tracker!=='instruments')
+    .map((i)=>`<option value="${i.name}">${i.name}</option>`).join('');
+  const rows = state.requests.map((r,ix)=>`<tr>
+      <td data-label=""><strong>${r.item}</strong></td>
+      <td data-label="When">${new Date(r.ts).toLocaleString('en-GB')}</td>
+      <td data-label="By">${r.by}</td>
+      <td class="qty" data-label="Qty">${r.qty}</td>
+      <td data-label="Status"><span class="badge ${r.status==='Issued'?'b-ok':r.status==='Approved'?'b-exp':'b-low'}">${r.status}</span></td>
+      <td class="rowbtns" data-label="">${r.status==='Pending'  ? `<button onclick="setReqStatus(${ix},'Approved')">Approve</button>`:''}
+                          ${r.status==='Approved' ? `<button onclick="setReqStatus(${ix},'Issued')">Mark issued</button>`:''}</td></tr>`).join('');
+  return `<h1>Requests</h1><div class="sub">Staff request items here; you approve and issue them</div>
+    <div class="toolrow">
+      <select id="reqItem">${opts}</select>
+      <input id="reqQty" type="number" min="1" value="1" style="width:80px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+      <input id="reqBy" type="text" placeholder="Requested by" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+      <button class="btn primary" onclick="addRequest()">Request item</button>
+    </div>
+    <table><thead><tr><th>Item</th><th>When</th><th>By</th><th class="qty">Qty</th><th>Status</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="6" style="color:var(--ink-soft)">No requests yet.</td></tr>'}</tbody></table>`;
+}
+function addRequest(){
+  const item = $('#reqItem').value;
+  const it = state.items.find(i=>i.name===item);
+  const req = {ts:new Date().toISOString(), by:$('#reqBy').value.trim()||myName||'Unknown',
+               item, qty:Math.max(1,parseInt($('#reqQty').value||'1',10)), status:'Pending'};
+  state.requests.unshift(req);
+  render(); toast('Request added');
+  if(LIVE) api({action:'request', by:req.by, item:req.item, qty:req.qty,
+                tracker: it?TRACKER_TAB[it.tracker]:'', code: it?it.code:''})
+             .then(()=>loadAll())
+             .catch(e=>toast('Request not saved — '+e.message));
+}
+function setReqStatus(ix, status){
+  const r = state.requests[ix];
+  r.status = status;
+  render();
+  if(LIVE && r._row) api({action:'setRequest', row:r._row, status, by:myName||'Unknown'})
+                       .catch(e=>toast('Not saved — '+e.message));
+}
+function ackAlert(ix){
+  const a = state.alerts[ix];
+  a.status = 'Acknowledged';
+  render(); toast('Alert acknowledged');
+  if(LIVE && a._row) api({action:'ack', row:a._row, by:myName||'Unknown'})
+                       .catch(e=>toast('Not saved — '+e.message));
+}
+function alertsView(){
+  const rows = state.alerts.map((a,ix)=>`<tr>
+      <td data-label=""><strong>${a.item||''}</strong></td>
+      <td data-label="Type"><span class="badge ${a.type==='Out of stock'?'b-out':a.type==='Expiry'?'b-exp':'b-low'}">${a.type}</span></td>
+      <td data-label="Detail">${a.detail||''}</td>
+      <td data-label="Raised">${a.ts?new Date(a.ts).toLocaleString('en-GB'):''}</td>
+      <td data-label="Status"><span class="badge ${a.status==='Acknowledged'?'b-ok':a.status==='Escalated'?'b-out':'b-low'}">${a.status}</span></td>
+      <td class="rowbtns" data-label="">${a.status==='Sent'||a.status==='Escalated'?`<button onclick="ackAlert(${ix})">Acknowledge</button>`:''}</td></tr>`).join('');
+  return `<h1>Alerts</h1><div class="sub">Low stock, out of stock and expiry alerts — acknowledge here or from the email. Unacknowledged alerts escalate automatically.</div>
+    <table><thead><tr><th>Item</th><th>Type</th><th>Detail</th><th>Raised</th><th>Status</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="6" style="color:var(--ink-soft)">No alerts. The daily check runs at 8am once the sheet is connected.</td></tr>'}</tbody></table>`;
+}
+
+/* ---------------- router ---------------- */
+function nav(view){ currentView=view; window._q=''; window._store=''; window._cat=''; render(); }
+document.querySelectorAll('nav a').forEach(a=>a.addEventListener('click',e=>{
+  e.preventDefault();
+  document.querySelectorAll('nav a').forEach(x=>x.classList.remove('active'));
+  a.classList.add('active');
+  nav(a.dataset.view);
+}));
+function render(){
+  const v = currentView;
+  const m = $('#main');
+  if(v==='dashboard') m.innerHTML = dashboardView();
+  else if(v==='dash-low') m.innerHTML = listView('Low stock', i=>i.tracker!=='instruments'&&i.qty>0&&i.qty<=i.reorder);
+  else if(v==='dash-out') m.innerHTML = listView('Out of stock', i=>i.tracker!=='instruments'&&i.qty===0);
+  else if(v==='dash-exp') m.innerHTML = listView('Expiring within 90 days', i=>{const d=daysTo(i.expiry);return d!=null&&d<=90;});
+  else if(v==='log') m.innerHTML = logView();
+  else if(v==='requests') m.innerHTML = requestsView();
+  else if(v==='alerts') m.innerHTML = alertsView();
+  else m.innerHTML = trackerView(v);
+}
+
+/* ---------------- Google Sheets API layer ---------------- */
+const LIVE = !!CONFIG.API_URL;
+state.alerts = state.alerts || [];
+
+async function api(payload){
+  const res = await fetch(CONFIG.API_URL, {
+    method:'POST', body: JSON.stringify(payload),
+    headers:{'Content-Type':'text/plain;charset=utf-8'}   // simple request: no CORS preflight
+  });
+  const data = await res.json();
+  if(!data.ok) throw new Error(data.error||'Server error');
+  return data;
+}
+
+function mapItem(tab, r){
+  return {tracker: tab.toLowerCase(), _row: r._row,
+    code: r.Code!=null?String(r.Code):'', barcode: r.Barcode!=null?String(r.Barcode):'',
+    name: r.Name||'', cat: r.Category||'', supplier: r.Supplier||'',
+    loc: r.Location|| (tab==='Instruments' ? 'Bollin' : ''), unit: r.Unit||'Each',
+    qty: Number(r.Qty)||0, reorder: Number(r.ReorderLevel)||0,
+    cost: r.UnitCost!=null && r.UnitCost!=='' ? Number(r.UnitCost) : null,
+    expiry: r.Expiry ? String(r.Expiry).slice(0,10) : null,
+    batch: r.Batch||'', status: r.Status||''};
+}
+
+async function loadAll(){
+  if(!LIVE) { render(); return; }
+  $('#scanEcho').textContent = 'Loading…';
+  try{
+    const data = await api({action:'getAll'});
+    state.items = [];
+    for(const tab of Object.keys(data.items))
+      data.items[tab].forEach(r => state.items.push(mapItem(tab, r)));
+    state.log = data.transactions.map(t=>({ts:t.Timestamp, dir:t.Direction,
+      name:t.Name, code:t.Code, qty:t.Qty, by:t.By, tracker:String(t.Tracker||'').toLowerCase(),
+      batch:t.Batch, expiry:t.Expiry}));
+    state.requests = data.requests.map(r=>({_row:r._row, ts:r.Timestamp, by:r.By,
+      item:r.Item, qty:r.Qty, status:r.Status||'Pending', tracker:r.Tracker, code:r.Code}));
+    state.alerts = data.alerts.map(a=>({_row:a._row, ts:a.Timestamp, type:a.Type,
+      item:a.Item, detail:a.Detail, status:a.Status, tracker:a.Tracker}));
+    data.barcodeLinks.forEach(b=>{
+      const i = state.items.findIndex(it=>it.code===String(b.Code) &&
+                                          it.tracker===String(b.Tracker).toLowerCase());
+      if(i>=0) state.barcodeLinks[String(b.Barcode)] = i;
+    });
+    $('#scanEcho').textContent = '';
+    toast('Synced with Google Sheets');
+  }catch(err){
+    $('#scanEcho').textContent = '';
+    toast('Could not reach the sheet: '+err.message);
+  }
+  render();
+}
+
+/* ---------------- user name (asked once, kept on this device) ---------------- */
+let myName = '';
+try { myName = localStorage.getItem('bollin_name') || ''; } catch(e){}
+function setMyName(){
+  const n = prompt('Your name (recorded against stock movements):', myName);
+  if(n===null) return;
+  myName = n.trim();
+  try { localStorage.setItem('bollin_name', myName); } catch(e){}
+  paintName();
+}
+function paintName(){
+  $('#userName').textContent = myName ? myName : (LIVE?'Connected':'Demo mode');
+  $('#nameBtn').textContent = myName ? 'Change name' : 'Set my name';
+}
+paintName();
+
+/* ---------------- init ---------------- */
+render();      // instant paint (demo data or empty)
+loadAll();     // then sync from Google Sheets if configured
+</script>
+</body>
+</html>
