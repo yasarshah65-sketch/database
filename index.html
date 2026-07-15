@@ -53,25 +53,25 @@
   input,select{font-family:inherit;font-size:14px}
 
   /* ---------- layout ---------- */
-  .app{display:grid;grid-template-columns:216px 1fr;grid-template-rows:auto 1fr;height:100vh}
-  header.scanbar{grid-column:1/-1;background:#fff;color:var(--ink);display:flex;align-items:center;gap:16px;padding:8px 18px;border-bottom:2px solid var(--gold)}
+  .app{display:grid;grid-template-columns:236px 1fr;grid-template-rows:auto 1fr;height:100vh}
+  header.scanbar{grid-column:1/-1;background:#fff;color:var(--ink);display:flex;align-items:center;gap:18px;padding:12px 20px;border-bottom:2px solid var(--gold)}
   .brand{display:flex;align-items:center}
-  .brand img{height:44px;display:block}
-  .scanwrap{flex:1;display:flex;align-items:center;gap:10px;background:var(--mist);border:1px solid var(--line);border-radius:8px;padding:7px 12px;max-width:560px}
+  .brand img{height:58px;display:block}
+  .scanwrap{flex:1;display:flex;align-items:center;gap:10px;background:var(--mist);border:1px solid var(--line);border-radius:9px;padding:11px 14px;max-width:620px}
   .pulse{width:9px;height:9px;border-radius:50%;background:var(--gold);animation:pulse 1.6s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
   @media (prefers-reduced-motion:reduce){.pulse{animation:none}}
-  #scanInput{font-family:var(--mono);font-size:13px;color:var(--ink);background:transparent;border:none;outline:none;flex:1;min-width:0}
+  #scanInput{font-family:var(--mono);font-size:14.5px;color:var(--ink);background:transparent;border:none;outline:none;flex:1;min-width:0}
   #scanInput::placeholder{color:var(--ink-soft);opacity:.9}
   #scanEcho{font-family:var(--mono);font-size:12px;color:var(--pine);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38%}
   .userbox{font-size:12px;color:var(--ink-soft);text-align:right}
   .userbox button{background:transparent;border:1px solid var(--line);color:var(--pine);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600}
 
   nav{background:var(--card);border-right:1px solid var(--line);padding:14px 0;overflow-y:auto}
-  nav a{display:flex;align-items:center;gap:10px;padding:9px 18px;color:var(--ink-soft);text-decoration:none;font-weight:500;font-size:14px;border-left:3px solid transparent}
+  nav a{display:flex;align-items:center;gap:10px;padding:11px 18px;color:var(--ink-soft);text-decoration:none;font-weight:600;font-size:15.5px;letter-spacing:.15px;border-left:3px solid transparent}
   nav a.active{color:var(--pine);border-left-color:var(--pine);background:var(--ok-bg)}
   nav a:hover{color:var(--pine)}
-  nav .navsec{padding:14px 18px 4px;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--gold);font-weight:700}
+  nav .navsec{padding:16px 18px 5px;font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--gold);font-weight:700}
   nav a:focus-visible{outline:2px solid var(--pine);outline-offset:-2px}
 
   main{overflow-y:auto;padding:22px 26px}
@@ -152,7 +152,7 @@
     .app{grid-template-columns:1fr;grid-template-rows:auto auto 1fr}
 
     header.scanbar{flex-wrap:wrap;gap:8px;padding:8px 12px;position:sticky;top:0;z-index:20}
-    .brand img{height:34px}
+    .brand img{height:42px}
     .scanwrap{order:3;flex-basis:100%;max-width:none;padding:9px 12px}
     #scanEcho{font-size:12px}
     .userbox{margin-left:auto}
@@ -162,7 +162,7 @@
         padding:0 6px;position:sticky;top:0;z-index:15;-webkit-overflow-scrolling:touch;scrollbar-width:none}
     nav::-webkit-scrollbar{display:none}
     nav .navsec{display:none}
-    nav a{border-left:none;border-bottom:3px solid transparent;white-space:nowrap;padding:12px 13px;font-size:14px}
+    nav a{border-left:none;border-bottom:3px solid transparent;white-space:nowrap;padding:12px 14px;font-size:15px}
     nav a.active{border-bottom-color:var(--pine);background:none}
 
     main{padding:14px 12px 90px}
@@ -237,7 +237,7 @@
     <a href="#consumables" data-view="consumables">Consumables</a>
     <a href="#meds" data-view="meds">Medicines</a>
     <a href="#garments" data-view="garments">Garments</a>
-    <a href="#instruments" data-view="instruments">Instruments</a>
+    <a href="#instruments" data-view="instruments">Sterilisation</a>
     <a href="#linen" data-view="linen">Linen</a>
     <div class="navsec">Implants</div>
     <a href="#implants" data-view="implants">Implant orders</a>
@@ -330,7 +330,9 @@
     <div class="m-row"><label for="imPat">PAT number *</label><input id="imPat" type="text" placeholder="e.g. PAT-1234"></div>
     <div class="m-row"><label for="imSurg">Surgeon</label><input id="imSurg" type="text"></div>
     <div class="m-row"><label for="imDate">Surgery date</label><input id="imDate" type="date"></div>
-    <div class="m-row"><label for="imDet">Implant details *</label><input id="imDet" type="text" placeholder="e.g. Mentor CPG 323 350cc x2"></div>
+    <div class="m-row"><label for="imDet">Implant details *</label><input id="imDet" type="text" placeholder="e.g. Mentor CPG 323 350cc"></div>
+    <div class="m-row"><label for="imQty">Quantity</label><input id="imQty" type="number" min="1" value="2"></div>
+    <div class="m-row"><label for="imRem">Remarks</label><input id="imRem" type="text" placeholder="Optional"></div>
     <div class="m-row"><label for="imOrd">Date ordered</label><input id="imOrd" type="date"></div>
     <div class="m-row"><label for="imBy">Ordered by</label><input id="imBy" type="text"></div>
     <div class="m-row"><label for="imStat">Status</label>
@@ -342,12 +344,28 @@
   </div>
 </dialog>
 
+<dialog id="impRecvFormDlg">
+  <div class="m-head">Receive implants</div>
+  <div class="m-body">
+    <div class="itname" id="rcvName"></div>
+    <div class="itcode" id="rcvInfo" style="margin-bottom:12px"></div>
+    <div class="m-row"><label for="rcvBy">Received by *</label><input id="rcvBy" type="text"></div>
+    <div class="m-row"><label for="rcvQty">Qty received *</label><input id="rcvQty" type="number" min="1" value="2"></div>
+    <div class="m-row"><label for="rcvLoc">Kept in *</label><input id="rcvLoc" type="text" placeholder="e.g. Implant Cupboard TH2"></div>
+  </div>
+  <div class="m-actions">
+    <button class="btn" onclick="impRecvFormDlg.close()">Cancel</button>
+    <button class="btn primary" onclick="saveReceive()">Mark delivered</button>
+  </div>
+</dialog>
+
 <dialog id="impRetDlg">
   <div class="m-head">Return remaining implants</div>
   <div class="m-body">
     <div class="itname" id="retName"></div>
     <div class="itcode" id="retInfo" style="margin-bottom:12px"></div>
-    <div class="m-row"><label for="retDet">What is returned *</label><input id="retDet" type="text" placeholder="e.g. 1x 350cc unopened"></div>
+    <div class="m-row"><label for="retDet">What is returned *</label><input id="retDet" type="text" placeholder="e.g. 350cc unopened"></div>
+    <div class="m-row"><label for="retQty">Qty returned *</label><input id="retQty" type="number" min="1" value="1"></div>
     <div class="m-row"><label for="retBy">Returned by</label><input id="retBy" type="text"></div>
   </div>
   <div class="m-actions">
@@ -365,6 +383,39 @@
     <div id="recvList" style="max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"></div>
   </div>
   <div class="m-actions"><button class="btn" onclick="impRecvDlg.close()">Cancel</button></div>
+</dialog>
+
+<dialog id="dspDlg">
+  <div class="m-head">New dispatch to CSSD</div>
+  <div class="m-body">
+    <div class="m-row"><label for="dsRef">Dispatch ref</label><input id="dsRef" type="text"></div>
+    <div class="m-row"><label for="dsDate">Date sent</label><input id="dsDate" type="date"></div>
+    <div class="m-row"><label for="dsBy">Sent by</label><input id="dsBy" type="text"></div>
+    <div class="m-row"><label for="dsBatch">Batch / Lot</label><input id="dsBatch" type="text" placeholder="Optional"></div>
+    <div class="m-row"><label for="dsCode">Add item</label>
+      <input id="dsCode" type="text" placeholder="Scan or type CSSD code" data-scan="1">
+      <input id="dsQty" type="number" min="1" value="1" style="width:64px;padding:8px;border:1px solid var(--line);border-radius:8px" title="Count out">
+      <button class="btn" style="padding:8px 10px" onclick="addDispatchLine()">Add</button></div>
+    <div id="dsLines" style="max-height:180px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"></div>
+  </div>
+  <div class="m-actions">
+    <button class="btn" onclick="dspDlg.close()">Cancel</button>
+    <button class="btn primary" onclick="saveDispatch()">Dispatch items</button>
+  </div>
+</dialog>
+
+<dialog id="dspRetDlg">
+  <div class="m-head">Mark returned from CSSD</div>
+  <div class="m-body">
+    <div class="itname" id="drName"></div>
+    <div class="itcode" id="drInfo" style="margin-bottom:12px"></div>
+    <div class="m-row"><label for="drQty">Count in *</label><input id="drQty" type="number" min="0"></div>
+    <div class="m-row"><label for="drBy">Returned by</label><input id="drBy" type="text"></div>
+  </div>
+  <div class="m-actions">
+    <button class="btn" onclick="dspRetDlg.close()">Cancel</button>
+    <button class="btn primary" onclick="saveDispatchReturn()">Mark returned</button>
+  </div>
 </dialog>
 
 <div id="printArea"></div>
@@ -423,7 +474,7 @@ const state = {
   barcodeLinks: {}  // scanned barcode -> item index (persisted server-side in v2)
 };
 
-const TRACKER_LABEL = {consumables:'Consumables',meds:'Medicines',garments:'Garments',instruments:'Instruments',linen:'Linen'};
+const TRACKER_LABEL = {consumables:'Consumables',meds:'Medicines',garments:'Garments',instruments:'Sterilisation',linen:'Linen'};
 let currentView = 'dashboard';
 let dlgItem = null, dlgDir = 'out';
 
@@ -456,7 +507,8 @@ document.addEventListener('keydown', e => {
     // typing in a form field: still allow scans — bursts are distinguishable,
     // but keep it simple in v1: ignore while a dialog is open
     if($('#moveDlg').open || $('#linkDlg').open || $('#addDlg').open ||
-       $('#impDlg').open || $('#impRetDlg').open) return;
+       $('#impDlg').open || $('#impRetDlg').open || $('#impRecvFormDlg').open ||
+       $('#dspRetDlg').open) return;
   }
   const now = Date.now();
   if(now - lastKey > 80) buf='';
@@ -480,6 +532,8 @@ function handleScan(code){
   $('#scanEcho').textContent = 'Scanned: ' + code;
   // receiving an implant delivery?
   if(currentView==='implants'){ implantScan(code); return; }
+  // sterilisation view: dispatch / return flow
+  if(currentView==='instruments'){ sterilScan(code); return; }
   // 1. direct match on barcode or code
   let idx = state.items.findIndex(it => it.barcode===code || it.code===code);
   // 2. learned link
@@ -489,6 +543,7 @@ function handleScan(code){
     // during a stocktake, a scan counts the item instead of moving stock
     if(currentView==='stocktake' && it.tracker===stk.tracker &&
        (!stk.store || it.loc===stk.store)){ bumpCount(it); return; }
+    if(it.tracker==='instruments'){ sterilScan(code); return; }
     openMove(it); return;
   }
   // 3. unknown -> link dialog
@@ -568,7 +623,9 @@ async function saveMove(){
   if(LIVE){
     try{
       await api({action:'move', tracker:TRACKER_TAB[dlgItem.tracker],
-                 code: dlgItem.code || dlgItem.barcode, dir:dlgDir, qty:q, by,
+                 row: dlgItem._row || null,
+                 code: dlgItem.code || dlgItem.barcode || dlgItem.name,
+                 dir:dlgDir, qty:q, by,
                  batch:$('#dlgBatch') ? $('#dlgBatch').value : '', expiry:$('#dlgExp') ? $('#dlgExp').value : ''});
     }catch(err){
       dlgItem.qty = prevQty; dlgItem.status = prevStatus; state.log.shift();
@@ -614,7 +671,7 @@ function trackerView(key){
     <div class="sub">${all.length} items · scan any barcode, or use Move</div>
     <div class="toolrow">
       <input type="search" placeholder="Search name or code…" value="${window._q||''}"
-             oninput="window._q=this.value;render()">
+             oninput="window._q=this.value;refreshTrackerTable()">
       <select onchange="window._store=this.value;render()">
         <option value="">All stores</option>
         ${stores.map(s=>`<option ${s===st?'selected':''}>${s}</option>`).join('')}
@@ -625,7 +682,18 @@ function trackerView(key){
       </select>
       <button class="btn" onclick="openAdd('')">＋ Add item</button>
     </div>
-    ${tableFor(items,{expiry: key!=='garments' && key!=='instruments'})}`;
+    <div id="tblWrap">${tableFor(items,{expiry: key!=='garments'})}</div>`;
+}
+function refreshTrackerTable(){
+  const wrap = document.getElementById('tblWrap');
+  if(!wrap || !(currentView in TRACKER_TAB)) return;
+  const key = currentView;
+  const q  = (window._q ||'').toLowerCase();
+  const st = window._store||'', ct = window._cat||'';
+  const items = state.items.filter(i => i.tracker===key &&
+      (!q || i.name.toLowerCase().includes(q) || (i.code||'').toLowerCase().includes(q)) &&
+      (!st || i.loc===st) && (!ct || i.cat===ct));
+  wrap.innerHTML = tableFor(items,{expiry: key!=='garments'});
 }
 
 function dashboardView(){
@@ -633,7 +701,7 @@ function dashboardView(){
   const low = stock.filter(i=>i.qty>0 && i.qty<=i.reorder);
   const out = stock.filter(i=>i.qty===0);
   const exp = stock.filter(i=>{const d=daysTo(i.expiry);return d!=null && d<=90;});
-  const away = state.items.filter(i=>i.tracker==='instruments' && i.status==='At Countess');
+  const away = state.dispatch.filter(d=>d.status!=='Returned');
   const val = stock.reduce((s,i)=> s + (i.cost!=null ? i.cost*i.qty : 0), 0);
   const costed = stock.filter(i=>i.cost!=null).length;
   return `
@@ -644,7 +712,7 @@ function dashboardView(){
       <div class="tile warn" onclick="nav('dash-low')"><div class="n">${low.length}</div><div class="l">Low stock items</div></div>
       <div class="tile bad"  onclick="nav('dash-out')"><div class="n">${out.length}</div><div class="l">Out of stock</div></div>
       <div class="tile exp"  onclick="nav('dash-exp')"><div class="n">${exp.length}</div><div class="l">Expiring ≤ 90 days</div></div>
-      <div class="tile"      onclick="nav('instruments')"><div class="n">${away.length}</div><div class="l">Instruments at Countess</div></div>
+      <div class="tile"      onclick="nav('instruments')"><div class="n">${away.length}</div><div class="l">Lines out at CSSD</div></div>
       <div class="tile"><div class="n">£${val.toFixed(0)}</div><div class="l">Stock value (${costed} of ${stock.length} items costed)</div></div>
     </div>
     <h1 style="font-size:16px">Needs attention</h1>
@@ -766,42 +834,196 @@ function alertsView(){
     <tbody>${rows||'<tr><td colspan="6" style="color:var(--ink-soft)">No alerts. The daily check runs at 8am once the sheet is connected.</td></tr>'}</tbody></table>`;
 }
 
+/* ---------------- sterilisation dispatch log ---------------- */
+state.dispatch = state.dispatch || (CONFIG.API_URL ? [] : [
+  {_row:null, ref:'BC-DISP-001', dateSent:'2026-05-11', sentBy:'Lisa', name:'Basic Plastic',
+   code:'SET03488-006', qtyOut:41, batch:'LT-2026-001', dateReturned:'2026-05-15', qtyIn:41, returnedBy:'Lisa', status:'Returned'},
+  {_row:null, ref:'BC-DISP-014', dateSent:'2026-07-13', sentBy:'Lisa', name:'Light Handle',
+   code:'SIN07949-031', qtyOut:1, batch:'LT-2026-014', dateReturned:null, qtyIn:null, returnedBy:'', status:'Out'}
+]);
+let dspLines = [], dspRetRow = null;
+
+function sterilView(){
+  const open = state.dispatch.filter(d=>d.status!=='Returned');
+  const q = (window._dq||'').toLowerCase();
+  const list = state.dispatch.filter(d=>!q || (d.name||'').toLowerCase().includes(q) ||
+    (d.code||'').toLowerCase().includes(q) || (d.ref||'').toLowerCase().includes(q)).slice(0,300);
+  const fmt = d => d? new Date(d).toLocaleDateString('en-GB') : '—';
+  const rows = list.map(d=>{
+    const ix = state.dispatch.indexOf(d);
+    const badge = d.status==='Returned' ? '<span class="badge b-ok">Returned</span>'
+      : d.status==='Partial' ? '<span class="badge b-low">Partial</span>'
+      : '<span class="badge b-exp">Out at CSSD</span>';
+    return `<tr>
+      <td data-label=""><strong>${d.name||'—'}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${d.code||''}</span></td>
+      <td class="code" data-label="Dispatch">${d.ref||'—'}</td>
+      <td data-label="Sent">${fmt(d.dateSent)}${d.sentBy?' · '+d.sentBy:''}</td>
+      <td class="qty" data-label="Out">${d.qtyOut??'—'}</td>
+      <td data-label="Returned">${d.dateReturned? fmt(d.dateReturned)+(d.qtyIn!=null?' · in: '+d.qtyIn:'')+(d.returnedBy?' · '+d.returnedBy:'') : '—'}</td>
+      <td data-label="Status">${badge}</td>
+      <td class="rowbtns" data-label="">${d.status!=='Returned'?`<button onclick="openDispatchReturn(${ix})">Mark returned</button>`:''}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <h1>Sterilisation — dispatch log</h1>
+    <div class="sub">Instruments and trays sent to the Countess CSSD and back. ${open.length} line(s) currently out.
+      Scanning a CSSD code here marks it returned (if out) or adds it to a new dispatch.</div>
+    <div class="toolrow">
+      <button class="btn primary" onclick="openDispatch()">＋ New dispatch</button>
+      <input type="search" placeholder="Search item, code or dispatch ref…" value="${window._dq||''}"
+             oninput="window._dq=this.value;refreshSterilTable()">
+    </div>
+    <div id="dspWrap"><table><thead><tr><th>Item / Tray</th><th>Dispatch</th><th>Sent</th>
+      <th class="qty">Out</th><th>Returned</th><th>Status</th><th></th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="7" style="color:var(--ink-soft)">No dispatches logged yet.</td></tr>'}</tbody></table></div>`;
+}
+function refreshSterilTable(){
+  if(currentView!=='instruments') return;
+  const el = document.getElementById('dspWrap');
+  if(!el) return;
+  // re-render only the table portion
+  const tmp = document.createElement('div');
+  tmp.innerHTML = sterilView();
+  const fresh = tmp.querySelector('#dspWrap');
+  if(fresh) el.innerHTML = fresh.innerHTML;
+}
+
+function nextDispatchRef(){
+  let max = 0;
+  state.dispatch.forEach(d=>{
+    const m = /^BC-DISP-(\d+)$/.exec(String(d.ref||''));
+    if(m) max = Math.max(max, parseInt(m[1],10));
+  });
+  return 'BC-DISP-' + String(max+1).padStart(3,'0');
+}
+function openDispatch(prefillCode){
+  dspLines = [];
+  $('#dsRef').value = nextDispatchRef();
+  $('#dsDate').value = new Date().toISOString().slice(0,10);
+  $('#dsBy').value = myName||'';
+  $('#dsBatch').value=''; $('#dsCode').value=''; $('#dsQty').value=1;
+  paintDspLines();
+  dspDlg.showModal();
+  if(prefillCode){ $('#dsCode').value = prefillCode; addDispatchLine(); }
+  $('#dsCode').focus();
+}
+function addDispatchLine(){
+  const code = $('#dsCode').value.trim();
+  if(!code){ toast('Scan or type a code first'); return; }
+  const reg = state.items.find(i=>i.tracker==='instruments' && (i.code===code || i.barcode===code));
+  dspLines.push({code, name: reg?reg.name:'', qtyOut: Math.max(1,parseInt($('#dsQty').value||'1',10))});
+  $('#dsCode').value=''; $('#dsQty').value=1;
+  paintDspLines(); $('#dsCode').focus();
+}
+function paintDspLines(){
+  $('#dsLines').innerHTML = dspLines.length ? dspLines.map((l,i)=>`
+    <div style="padding:8px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;align-items:center">
+      <span><strong>${l.name||l.code}</strong> <span style="font-family:var(--mono);font-size:11.5px;color:var(--ink-soft)">${l.code}</span> ×${l.qtyOut}</span>
+      <button class="btn" style="padding:4px 10px;font-size:12px" onclick="dspLines.splice(${i},1);paintDspLines()">Remove</button></div>`).join('')
+    : '<div style="padding:12px;color:var(--ink-soft);font-size:13px">No items yet — scan trays/instruments to add them.</div>';
+}
+async function saveDispatch(){
+  if(!dspLines.length){ toast('Add at least one item'); return; }
+  const ref = $('#dsRef').value.trim()||nextDispatchRef();
+  const date = $('#dsDate').value||new Date().toISOString().slice(0,10);
+  const by = $('#dsBy').value.trim()||myName||'Unknown';
+  const batch = $('#dsBatch').value.trim();
+  dspLines.forEach(l=>state.dispatch.unshift({_row:null, ref, dateSent:date, sentBy:by,
+    name:l.name, code:l.code, qtyOut:l.qtyOut, batch, dateReturned:null, qtyIn:null, returnedBy:'', status:'Out'}));
+  const n = dspLines.length; dspLines=[];
+  dspDlg.close(); render(); toast(n+' item(s) dispatched — '+ref);
+  if(LIVE){
+    try{ await api({action:'dispatchAdd', ref, date, by, batch,
+      lines: state.dispatch.slice(0,n).map(d=>({code:d.code, name:d.name, qtyOut:d.qtyOut}))});
+      loadAll();
+    }catch(err){ toast('Not saved to sheet — '+err.message); }
+  }
+}
+function openDispatchReturn(ix){
+  dspRetRow = state.dispatch[ix];
+  $('#drName').textContent = (dspRetRow.name||dspRetRow.code) + ' — ' + dspRetRow.ref;
+  $('#drInfo').textContent = 'Sent '+(dspRetRow.dateSent?new Date(dspRetRow.dateSent).toLocaleDateString('en-GB'):'')+' · count out: '+dspRetRow.qtyOut;
+  $('#drQty').value = dspRetRow.qtyOut||1;
+  $('#drBy').value = myName||'';
+  dspRetDlg.showModal();
+}
+async function saveDispatchReturn(){
+  const qtyIn = Math.max(0, parseInt($('#drQty').value||'0',10));
+  const by = $('#drBy').value.trim()||myName||'Unknown';
+  dspRetRow.qtyIn = qtyIn; dspRetRow.returnedBy = by;
+  dspRetRow.dateReturned = new Date().toISOString();
+  dspRetRow.status = qtyIn >= (dspRetRow.qtyOut||0) ? 'Returned' : 'Partial';
+  if(qtyIn < (dspRetRow.qtyOut||0)) toast('Count variance recorded: out '+dspRetRow.qtyOut+', in '+qtyIn);
+  dspRetDlg.close(); render(); toast((dspRetRow.name||dspRetRow.code)+' marked '+dspRetRow.status.toLowerCase());
+  if(LIVE && dspRetRow._row){
+    try{ await api({action:'dispatchReturn', row:dspRetRow._row, qtyIn, by}); }
+    catch(err){ toast('Not saved to sheet — '+err.message); loadAll(); }
+  }
+}
+function sterilScan(code){
+  // if dispatch dialog is open, add as a line
+  if($('#dspDlg').open){ $('#dsCode').value = code; addDispatchLine(); return; }
+  // an open line with this code -> return it
+  const openIx = state.dispatch.findIndex(d=>d.status!=='Returned' && d.code===code);
+  if(openIx>=0){ openDispatchReturn(openIx); return; }
+  // else start a new dispatch with it
+  openDispatch(code);
+}
+
 /* ---------------- implants ---------------- */
 state.implants = state.implants || (CONFIG.API_URL ? [] : [
   {_row:null, initials:'JS', pat:'PAT-1041', surgeon:'Mr Siddiqui', surgeryDate:'2026-07-28',
-   details:'Mentor CPG 323 350cc x2', dateOrdered:'2026-07-10', orderedBy:'Reception',
-   status:'Ordered', receivedBy:'', scannedRef:'', returnDetails:'', returnedBy:''},
+   details:'Mentor CPG 323 350cc', qty:2, remarks:'', dateOrdered:'2026-07-10', orderedBy:'Reception',
+   status:'Ordered', receivedBy:'', receivedQty:null, storage:'', scannedRef:'', returnDetails:'', returnedQty:null, returnedBy:''},
   {_row:null, initials:'AK', pat:'PAT-1055', surgeon:'Mr Siddiqui', surgeryDate:'2026-08-04',
-   details:'Motiva Ergonomix 275cc x2 + 1 spare', dateOrdered:null, orderedBy:'',
-   status:'Pending', receivedBy:'', scannedRef:'', returnDetails:'', returnedBy:''}
+   details:'Motiva Ergonomix 275cc', qty:3, remarks:'1 spare requested', dateOrdered:null, orderedBy:'',
+   status:'Pending', receivedBy:'', receivedQty:null, storage:'', scannedRef:'', returnDetails:'', returnedQty:null, returnedBy:''}
 ]);
-let retImp = null;
+let retImp = null, rcvImp = null, rcvRef = '';
 
 function implantsView(){
-  const active = state.implants.filter(i=>i.status!=='Delivered' || !i.returnDetails);
   const stBadge = s => `<span class="badge ${s==='Delivered'?'b-ok':s==='Ordered'?'b-exp':'b-low'}">${s}</span>`;
   const row = (im,ix)=>`<tr>
       <td data-label=""><strong>${im.initials}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${im.pat}</span></td>
       <td data-label="Surgeon">${im.surgeon||'—'}</td>
       <td data-label="Surgery">${im.surgeryDate?new Date(im.surgeryDate).toLocaleDateString('en-GB'):'—'}</td>
-      <td data-label="Implants">${im.details}</td>
+      <td data-label="Implants">${im.details}${im.qty?' <span class="code" style="font-size:12px">×'+im.qty+'</span>':''}
+        ${im.remarks?'<div style="font-size:11.5px;color:var(--ink-soft)">'+im.remarks+'</div>':''}</td>
       <td data-label="Ordered">${im.dateOrdered?new Date(im.dateOrdered).toLocaleDateString('en-GB'):'—'}${im.orderedBy?' · '+im.orderedBy:''}</td>
-      <td data-label="Status">${stBadge(im.status)}${im.receivedBy?'<div style="font-size:11px;color:var(--ink-soft)">rec. '+im.receivedBy+'</div>':''}</td>
-      <td data-label="Return">${im.returnDetails?im.returnDetails+' <span style="font-size:11px;color:var(--ink-soft)">by '+(im.returnedBy||'?')+'</span>':'—'}</td>
+      <td data-label="Status">${stBadge(im.status)}
+        ${im.receivedBy?'<div style="font-size:11px;color:var(--ink-soft)">rec. '+im.receivedBy+(im.receivedQty?' ×'+im.receivedQty:'')+(im.storage?' → '+im.storage:'')+'</div>':''}</td>
+      <td data-label="Return">${im.returnDetails? (im.returnedQty?'×'+im.returnedQty+' ':'')+im.returnDetails+' <span style="font-size:11px;color:var(--ink-soft)">by '+(im.returnedBy||'?')+'</span>':'—'}</td>
       <td class="rowbtns" data-label="">
         ${im.status==='Pending'?`<button onclick="setImplantStatus(${ix},'Ordered')">Mark ordered</button>`:''}
-        ${im.status!=='Delivered'?`<button onclick="setImplantStatus(${ix},'Delivered')">Mark delivered</button>`:''}
+        ${im.status!=='Delivered'?`<button onclick="openReceive(${ix},'')">Mark delivered</button>`:''}
         ${im.status==='Delivered'&&!im.returnDetails?`<button onclick="openReturn(${ix})">Return extras</button>`:''}
       </td></tr>`;
   const rows = state.implants.map(row).join('');
   return `
     <h1>Implant orders</h1>
-    <div class="sub">Track every implant from consultation to delivery. Scanning a delivery box on this page marks the order as received.</div>
+    <div class="sub">Track every implant from consultation to delivery. Scanning a delivery box on this page starts the receive process.</div>
     <div class="toolrow">
       <button class="btn primary" onclick="openImplant()">＋ New implant order</button>
       <span style="color:var(--ink-soft);font-size:13px">${state.implants.filter(i=>i.status==='Pending').length} pending ·
         ${state.implants.filter(i=>i.status==='Ordered').length} ordered ·
         ${state.implants.filter(i=>i.status==='Delivered').length} delivered</span>
+    </div>
+    <div class="toolrow" style="align-items:center">
+      <span style="font-size:13px;color:var(--ink-soft)">Status report:</span>
+      <select id="repRange" onchange="$('#repCustom').style.display=this.value==='custom'?'flex':'none'">
+        <option value="day">Today</option><option value="week">This week</option>
+        <option value="month" selected>This month</option><option value="custom">Custom dates</option>
+      </select>
+      <select id="repBasis">
+        <option value="surgeryDate">By surgery date</option>
+        <option value="dateOrdered">By date ordered</option>
+      </select>
+      <span id="repCustom" style="display:none;gap:6px;align-items:center">
+        <input id="repFrom" type="date" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+        <span>to</span>
+        <input id="repTo" type="date" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+      </span>
+      <button class="btn" onclick="printImplantReport()">Print / PDF</button>
     </div>
     <table><thead><tr><th>Patient</th><th>Surgeon</th><th>Surgery</th><th>Implants</th>
       <th>Ordered</th><th>Status</th><th>Return</th><th></th></tr></thead>
@@ -809,7 +1031,8 @@ function implantsView(){
 }
 
 function openImplant(){
-  ['imInit','imPat','imSurg','imDate','imDet'].forEach(id=>$('#'+id).value='');
+  ['imInit','imPat','imSurg','imDate','imDet','imRem'].forEach(id=>$('#'+id).value='');
+  $('#imQty').value = 2;
   $('#imOrd').value = new Date().toISOString().slice(0,10);
   $('#imBy').value = myName||'';
   $('#imStat').value = 'Pending';
@@ -819,32 +1042,52 @@ async function saveImplant(){
   const im = {_row:null, initials:$('#imInit').value.trim().toUpperCase(),
     pat:$('#imPat').value.trim(), surgeon:$('#imSurg').value.trim(),
     surgeryDate:$('#imDate').value||null, details:$('#imDet').value.trim(),
+    qty:Math.max(1,parseInt($('#imQty').value||'1',10)), remarks:$('#imRem').value.trim(),
     dateOrdered:$('#imOrd').value||null, orderedBy:$('#imBy').value.trim()||myName||'Unknown',
-    status:$('#imStat').value, receivedBy:'', scannedRef:'', returnDetails:'', returnedBy:''};
+    status:$('#imStat').value, receivedBy:'', receivedQty:null, storage:'',
+    scannedRef:'', returnDetails:'', returnedQty:null, returnedBy:''};
   if(!im.initials || !im.pat || !im.details){ toast('Initials, PAT number and implant details are required'); return; }
   state.implants.unshift(im);
   impDlg.close(); render(); toast('Implant order added for '+im.initials);
   if(LIVE){
     try{ await api({action:'implantAdd', fields:{PatientInitials:im.initials, PATNumber:im.pat,
       Surgeon:im.surgeon, SurgeryDate:im.surgeryDate, ImplantDetails:im.details,
+      Qty:im.qty, Remarks:im.remarks,
       DateOrdered:im.dateOrdered, OrderedBy:im.orderedBy, Status:im.status}});
       loadAll();
     }catch(err){ toast('Not saved to sheet — '+err.message); }
   }
 }
-async function setImplantStatus(ix, status, scannedRef){
+async function setImplantStatus(ix, status){
   const im = state.implants[ix];
   im.status = status;
-  const fields = {Status:status};
-  if(status==='Delivered'){
-    im.receivedBy = myName||'Unknown';
-    fields.ReceivedBy = im.receivedBy;
-    fields.ReceivedDate = new Date().toISOString();
-    if(scannedRef){ im.scannedRef = scannedRef; fields.ScannedRef = scannedRef; }
-  }
   render(); toast(im.initials+' ('+im.pat+') → '+status);
   if(LIVE && im._row){
-    try{ await api({action:'implantUpdate', row:im._row, fields}); }
+    try{ await api({action:'implantUpdate', row:im._row, fields:{Status:status}}); }
+    catch(err){ toast('Not saved to sheet — '+err.message); loadAll(); }
+  }
+}
+function openReceive(ix, scannedRef){
+  rcvImp = state.implants[ix]; rcvRef = scannedRef||'';
+  $('#rcvName').textContent = rcvImp.initials + ' · ' + rcvImp.pat;
+  $('#rcvInfo').textContent = rcvImp.details + (rcvImp.qty?' ×'+rcvImp.qty:'') + (rcvRef?' — scanned: '+rcvRef:'');
+  $('#rcvBy').value = myName||'';
+  $('#rcvQty').value = rcvImp.qty || 1;
+  $('#rcvLoc').value = '';
+  impRecvFormDlg.showModal();
+}
+async function saveReceive(){
+  const by = $('#rcvBy').value.trim(), loc = $('#rcvLoc').value.trim();
+  const qty = Math.max(1, parseInt($('#rcvQty').value||'1',10));
+  if(!by || !loc){ toast('Name and storage location are required'); return; }
+  if(!myName){ myName=by; try{localStorage.setItem('bollin_name',myName);}catch(e){} paintName(); }
+  rcvImp.status='Delivered'; rcvImp.receivedBy=by; rcvImp.receivedQty=qty;
+  rcvImp.storage=loc; if(rcvRef) rcvImp.scannedRef=rcvRef;
+  impRecvFormDlg.close(); render(); toast('Delivered: '+rcvImp.initials+' ×'+qty+' → '+loc);
+  if(LIVE && rcvImp._row){
+    try{ await api({action:'implantUpdate', row:rcvImp._row, fields:{
+      Status:'Delivered', ReceivedBy:by, ReceivedQty:qty, StorageLocation:loc,
+      ReceivedDate:new Date().toISOString(), ScannedRef:rcvRef||''}}); }
     catch(err){ toast('Not saved to sheet — '+err.message); loadAll(); }
   }
 }
@@ -852,26 +1095,27 @@ function openReturn(ix){
   retImp = state.implants[ix];
   $('#retName').textContent = retImp.initials + ' · ' + retImp.pat;
   $('#retInfo').textContent = retImp.details;
-  $('#retDet').value=''; $('#retBy').value = myName||'';
+  $('#retDet').value=''; $('#retQty').value=1; $('#retBy').value = myName||'';
   impRetDlg.showModal();
 }
 async function saveReturn(){
   const det = $('#retDet').value.trim();
+  const qty = Math.max(1, parseInt($('#retQty').value||'1',10));
   if(!det){ toast('Describe what is being returned'); return; }
-  retImp.returnDetails = det;
+  retImp.returnDetails = det; retImp.returnedQty = qty;
   retImp.returnedBy = $('#retBy').value.trim()||myName||'Unknown';
   impRetDlg.close(); render(); toast('Return recorded');
   if(LIVE && retImp._row){
     try{ await api({action:'implantUpdate', row:retImp._row, fields:{
-      ReturnDetails:det, ReturnedBy:retImp.returnedBy, ReturnedDate:new Date().toISOString()}}); }
+      ReturnDetails:det, ReturnedQty:qty, ReturnedBy:retImp.returnedBy,
+      ReturnedDate:new Date().toISOString()}}); }
     catch(err){ toast('Not saved to sheet — '+err.message); loadAll(); }
   }
 }
 function implantScan(code){
-  // scanned ref already attached to an order?
   const known = state.implants.findIndex(i=>i.scannedRef && i.scannedRef===code);
   if(known>=0 && state.implants[known].status!=='Delivered'){
-    setImplantStatus(known,'Delivered',code); return;
+    openReceive(known, code); return;
   }
   const waiting = state.implants.map((im,ix)=>({im,ix}))
     .filter(x=>x.im.status!=='Delivered');
@@ -879,10 +1123,61 @@ function implantScan(code){
   $('#recvCode').textContent = 'Scanned: '+code;
   $('#recvList').innerHTML = waiting.map(x=>`
     <div style="padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer"
-         onclick="impRecvDlg.close();setImplantStatus(${x.ix},'Delivered','${code.replace(/'/g,"\\'")}')">
+         onclick="impRecvDlg.close();openReceive(${x.ix},'${code.replace(/'/g,"\\'")}')">
       <strong>${x.im.initials} · ${x.im.pat}</strong>
       <div style="font-size:12px;color:var(--ink-soft)">${x.im.details} — ${x.im.status}</div></div>`).join('');
   impRecvDlg.showModal();
+}
+
+function printImplantReport(){
+  const range = $('#repRange').value, basis = $('#repBasis').value;
+  const today = new Date(); today.setHours(0,0,0,0);
+  let from, to, label;
+  if(range==='day'){ from=new Date(today); to=new Date(today); label='Today, '+today.toLocaleDateString('en-GB'); }
+  else if(range==='week'){
+    from=new Date(today); from.setDate(from.getDate()-((from.getDay()+6)%7));  // Monday
+    to=new Date(from); to.setDate(to.getDate()+6);
+    label='Week '+from.toLocaleDateString('en-GB')+' – '+to.toLocaleDateString('en-GB');
+  } else if(range==='month'){
+    from=new Date(today.getFullYear(),today.getMonth(),1);
+    to=new Date(today.getFullYear(),today.getMonth()+1,0);
+    label=from.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  } else {
+    if(!$('#repFrom').value || !$('#repTo').value){ toast('Pick both custom dates'); return; }
+    from=new Date($('#repFrom').value); to=new Date($('#repTo').value);
+    label=from.toLocaleDateString('en-GB')+' – '+to.toLocaleDateString('en-GB');
+  }
+  to.setHours(23,59,59);
+  const rows = state.implants.filter(im=>{
+    const d = im[basis] ? new Date(im[basis]) : null;
+    return d && d>=from && d<=to;
+  });
+  if(!rows.length){ toast('No implant orders in that period'); return; }
+  const basisLabel = basis==='surgeryDate'?'surgery date':'date ordered';
+  const fmt = d => d? new Date(d).toLocaleDateString('en-GB') : '—';
+  $('#printArea').innerHTML = `
+    <div style="padding:10mm;font-family:var(--sans)">
+      <div style="display:flex;align-items:center;gap:8mm;border-bottom:2px solid #B08A3E;padding-bottom:4mm;margin-bottom:5mm">
+        <img src="logo.png" style="height:16mm">
+        <div><div style="font-size:14pt;font-weight:700">Implant status report</div>
+        <div style="font-size:10pt;color:#555">${label} (by ${basisLabel}) — printed ${new Date().toLocaleString('en-GB')}${myName?' by '+myName:''}</div></div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:9pt">
+        <thead><tr style="background:#EFF4F3">
+          ${['Patient','PAT','Surgeon','Surgery','Implants','Qty','Ordered','Status','Received','Kept in','Returned','Remarks']
+            .map(x=>'<th style="border:1px solid #ccc;padding:4px 6px;text-align:left">'+x+'</th>').join('')}</tr></thead>
+        <tbody>${rows.map(im=>'<tr>'+ [
+            im.initials, im.pat, im.surgeon||'—', fmt(im.surgeryDate),
+            im.details, im.qty||'—', fmt(im.dateOrdered)+(im.orderedBy?' ('+im.orderedBy+')':''),
+            im.status, im.receivedBy?(im.receivedBy+(im.receivedQty?' ×'+im.receivedQty:'')):'—',
+            im.storage||'—',
+            im.returnDetails?((im.returnedQty?'×'+im.returnedQty+' ':'')+im.returnDetails+' ('+(im.returnedBy||'?')+')'):'—',
+            im.remarks||'—'
+          ].map(x=>'<td style="border:1px solid #ccc;padding:4px 6px">'+x+'</td>').join('') +'</tr>').join('')}</tbody>
+      </table>
+      <div style="font-size:8pt;color:#777;margin-top:4mm">${rows.length} order(s) · Bollin Clinic Stock Manager</div>
+    </div>`;
+  setTimeout(()=>window.print(), 250);
 }
 
 /* ---------------- stocktake (month-end & annual checks) ---------------- */
@@ -975,7 +1270,8 @@ function stocktakeView(){
 async function saveStocktake(){
   const items = stkItems().filter(i => stkKey(i) in stk.counts);
   if(!items.length){ toast('Enter at least one count first'); return; }
-  const entries = items.map(i=>({tracker:TRACKER_TAB[i.tracker], code:i.code||i.barcode,
+  const entries = items.map(i=>({tracker:TRACKER_TAB[i.tracker], row:i._row||null,
+    code:i.code||i.barcode||i.name,
     item:i.name, expected:i.qty, counted:stk.counts[stkKey(i)], store:i.loc||''}));
   const variances = entries.filter(e=>e.counted!==e.expected).length;
   if(!confirm('Save ' + stk.type + ' check: ' + entries.length + ' items, ' + variances +
@@ -1192,6 +1488,7 @@ function render(){
   else if(v==='stocktake'){ m.innerHTML = stocktakeView(); paintStkSummary(); }
   else if(v==='labels') m.innerHTML = labelsView();
   else if(v==='implants') m.innerHTML = implantsView();
+  else if(v==='instruments') m.innerHTML = sterilView();
   else m.innerHTML = trackerView(v);
 }
 
@@ -1238,9 +1535,19 @@ async function loadAll(){
       initials:m.PatientInitials||'', pat:m.PATNumber||'', surgeon:m.Surgeon||'',
       surgeryDate:m.SurgeryDate||null, details:m.ImplantDetails||'',
       dateOrdered:m.DateOrdered||null, orderedBy:m.OrderedBy||'',
+      qty:m.Qty?Number(m.Qty):null, remarks:m.Remarks||'',
       status:m.Status||'Pending', receivedBy:m.ReceivedBy||'',
+      receivedQty:m.ReceivedQty?Number(m.ReceivedQty):null, storage:m.StorageLocation||'',
       scannedRef:m.ScannedRef?String(m.ScannedRef):'',
-      returnDetails:m.ReturnDetails||'', returnedBy:m.ReturnedBy||''}));
+      returnDetails:m.ReturnDetails||'', returnedQty:m.ReturnedQty?Number(m.ReturnedQty):null,
+      returnedBy:m.ReturnedBy||''}));
+    state.dispatch = (data.dispatch||[]).map(d=>({_row:d._row, ref:d.DispatchRef||'',
+      dateSent:d.DateSent||null, sentBy:d.SentBy||'', name:d.ItemName||'',
+      code:d.Code?String(d.Code):'', qtyOut:d.CountOut!=null?Number(d.CountOut):null,
+      batch:d.BatchLot||'', dateReturned:d.DateReturned||null,
+      qtyIn:d.CountIn!=null&&d.CountIn!==''?Number(d.CountIn):null,
+      returnedBy:d.ReturnedBy||'',
+      status:d.Status||(d.DateReturned?'Returned':'Out')}));
     state.alerts = data.alerts.map(a=>({_row:a._row, ts:a.Timestamp, type:a.Type,
       item:a.Item, detail:a.Detail, status:a.Status, tracker:a.Tracker}));
     data.barcodeLinks.forEach(b=>{

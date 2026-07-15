@@ -40,6 +40,8 @@ function doPost(e) {
       case 'respond':   return json_(respondRequest_(req));
       case 'implantAdd':   return json_(implantAdd_(req));
       case 'implantUpdate':return json_(implantUpdate_(req));
+      case 'dispatchAdd':   return json_(dispatchAdd_(req));
+      case 'dispatchReturn':return json_(dispatchReturn_(req));
       case 'ack':       return json_(ackAlert_(req));
       case 'stocktake': return json_(stocktake_(req));
       default:          return json_({ ok: false, error: 'Unknown action' });
@@ -81,14 +83,19 @@ function findItem_(tracker, code) {
   const vals = sh.getDataRange().getValues();
   const head = vals[0].map(String);
   const cCode = head.indexOf('Code'), cBar = head.indexOf('Barcode'), cName = head.indexOf('Name');
+  const target = String(code == null ? '' : code).trim();
+  if (!target) throw 'No identifier given';
   let byName = null;
   for (let r = 1; r < vals.length; r++) {
-    if (String(vals[r][cCode]) === String(code) ||
-        (cBar >= 0 && String(vals[r][cBar]) === String(code))) {
+    const vc = String(vals[r][cCode] == null ? '' : vals[r][cCode]).trim();
+    const vb = cBar >= 0 ? String(vals[r][cBar] == null ? '' : vals[r][cBar]).trim() : '';
+    if ((vc && vc === target) || (vb && vb === target)) {
       return { sh: sh, row: r + 1, head: head, vals: vals[r] };
     }
-    if (cName >= 0 && !byName && String(vals[r][cName]) === String(code))
-      byName = { sh: sh, row: r + 1, head: head, vals: vals[r] };
+    if (cName >= 0 && !byName) {
+      const vn = String(vals[r][cName] == null ? '' : vals[r][cName]).trim();
+      if (vn && vn === target) byName = { sh: sh, row: r + 1, head: head, vals: vals[r] };
+    }
   }
   if (byName) return byName;                       // fallback: exact name match
   throw 'Item not found: ' + code + ' in ' + tracker;
@@ -129,6 +136,14 @@ function setBarcodes_(q) {
   return { ok: true, done: done, errors: errors.slice(0, 10) };
 }
 
+function itemAtRow_(tracker, row) {
+  const sh = ss_().getSheetByName(tracker);
+  if (!sh) throw 'No tab: ' + tracker;
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const vals = sh.getRange(row, 1, 1, sh.getLastColumn()).getValues()[0];
+  return { sh: sh, row: row, head: head, vals: vals };
+}
+
 function col_(head, name) {
   const i = head.indexOf(name);
   if (i < 0) throw 'Missing column ' + name;
@@ -153,14 +168,15 @@ function getAll_() {
     requests: readTab_('Requests').reverse(),
     alerts: readTab_('Alerts').slice(-100).reverse(),
     implants: readTab_('Implants').reverse(),
+    dispatch: readTab_('DispatchLog').reverse(),
     barcodeLinks: readTab_('BarcodeLinks'),
     serverTime: new Date().toISOString()
   };
 }
 
 function move_(q) {
-  // q: {tracker, code, dir:'in'|'out', qty, by, batch, expiry, note}
-  const it = findItem_(q.tracker, q.code);
+  // q: {tracker, code, row?, dir:'in'|'out', qty, by, batch, expiry, note}
+  const it = q.row ? itemAtRow_(q.tracker, Number(q.row)) : findItem_(q.tracker, q.code);
   const qty = Math.max(1, Number(q.qty) || 1);
   let newQty = null;
 
@@ -242,17 +258,22 @@ function updateItem_(q) {
 /* ============================== implants ================================= */
 
 const IMPLANT_HEADERS = ['Timestamp','PatientInitials','PATNumber','Surgeon','SurgeryDate',
-  'ImplantDetails','DateOrdered','OrderedBy','Status','ReceivedBy','ReceivedDate',
-  'ScannedRef','ReturnDetails','ReturnedBy','ReturnedDate','Notes'];
+  'ImplantDetails','Qty','Remarks','DateOrdered','OrderedBy','Status','ReceivedBy','ReceivedDate',
+  'ReceivedQty','StorageLocation','ScannedRef','ReturnDetails','ReturnedQty','ReturnedBy','ReturnedDate','Notes'];
 
 function implantAdd_(q) {
   const sh = ss_().getSheetByName('Implants');
   if (!sh) return { ok: false, error: 'Implants tab missing — run migrate() in the script editor' };
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
   const f = q.fields || {};
-  sh.appendRow([new Date(), f.PatientInitials || '', f.PATNumber || '', f.Surgeon || '',
-    f.SurgeryDate ? new Date(f.SurgeryDate) : '', f.ImplantDetails || '',
-    f.DateOrdered ? new Date(f.DateOrdered) : '', f.OrderedBy || '',
-    f.Status || 'Pending', '', '', '', '', '', '', f.Notes || '']);
+  f.Timestamp = new Date();
+  const row = head.map(h => {
+    let v = f[h];
+    if (v === undefined || v === null) return '';
+    if (h.indexOf('Date') >= 0 && v) return new Date(v);
+    return v;
+  });
+  sh.appendRow(row);
   return { ok: true, row: sh.getLastRow() };
 }
 
@@ -272,16 +293,69 @@ function implantUpdate_(q) {
   return { ok: true };
 }
 
+/* ============================ dispatch log =============================== */
+
+const DISPATCH_HEADERS = ['DispatchRef','DateSent','SentBy','ItemName','Code','CountOut',
+  'BatchLot','Instructions','CollectedBy','DateCollected','CountessRef',
+  'DateReturned','ReturnedBy','CountIn','Status'];
+
+function dispatchAdd_(q) {
+  // q: {ref, date, by, batch, lines:[{code, name, qtyOut, instructions}]}
+  const sh = ss_().getSheetByName('DispatchLog');
+  if (!sh) return { ok: false, error: 'DispatchLog tab missing — run migrate()' };
+  const rows = (q.lines || []).map(l => [
+    q.ref || '', q.date ? new Date(q.date) : new Date(), q.by || '',
+    l.name || '', l.code || '', Math.max(1, Number(l.qtyOut) || 1),
+    q.batch || '', l.instructions || '', '', '', '', '', '', '', 'Out'
+  ]);
+  if (!rows.length) return { ok: false, error: 'No lines' };
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, DISPATCH_HEADERS.length).setValues(rows);
+  return { ok: true, added: rows.length };
+}
+
+function dispatchReturn_(q) {
+  // q: {row, qtyIn, by}
+  const sh = ss_().getSheetByName('DispatchLog');
+  if (!sh) return { ok: false, error: 'DispatchLog tab missing — run migrate()' };
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const get = n => head.indexOf(n) + 1;
+  const qtyOut = Number(sh.getRange(q.row, get('CountOut')).getValue()) || 0;
+  const qtyIn = Number(q.qtyIn) || qtyOut;
+  sh.getRange(q.row, get('DateReturned')).setValue(new Date());
+  sh.getRange(q.row, get('ReturnedBy')).setValue(q.by || '');
+  sh.getRange(q.row, get('CountIn')).setValue(qtyIn);
+  sh.getRange(q.row, get('Status')).setValue(qtyIn >= qtyOut ? 'Returned' : 'Partial');
+  return { ok: true };
+}
+
 /* ============================== migration ================================ */
 /** Run once from the editor after pasting this version (Run ▶ migrate). */
 function migrate() {
   const ss = ss_();
-  // 1. Implants tab
-  if (!ss.getSheetByName('Implants')) {
-    const sh = ss.insertSheet('Implants');
-    sh.getRange(1, 1, 1, IMPLANT_HEADERS.length).setValues([IMPLANT_HEADERS])
+  // 1. Implants tab (create, or append any missing columns)
+  let imp = ss.getSheetByName('Implants');
+  if (!imp) {
+    imp = ss.insertSheet('Implants');
+    imp.getRange(1, 1, 1, IMPLANT_HEADERS.length).setValues([IMPLANT_HEADERS])
       .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
-    sh.setFrozenRows(1);
+    imp.setFrozenRows(1);
+  } else {
+    const have = imp.getRange(1, 1, 1, Math.max(imp.getLastColumn(), 1)).getValues()[0].map(String);
+    IMPLANT_HEADERS.forEach(hd => {
+      if (have.indexOf(hd) < 0) {
+        const c2 = imp.getLastColumn() + 1;
+        imp.getRange(1, c2).setValue(hd)
+          .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+        have.push(hd);
+      }
+    });
+  }
+  // 1b. DispatchLog tab (sterilisation) — matches the original Dispatch Log column order
+  if (!ss.getSheetByName('DispatchLog')) {
+    const dl = ss.insertSheet('DispatchLog');
+    dl.getRange(1, 1, 1, DISPATCH_HEADERS.length).setValues([DISPATCH_HEADERS])
+      .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+    dl.setFrozenRows(1);
   }
   // 2. Requests tab: old schema (Tracker/Code, HandledAt) -> new (Size, DateResponded, Remarks)
   const sh = ss.getSheetByName('Requests');
@@ -340,7 +414,7 @@ function stocktake_(q) {
                   en.code, en.item, en.expected, en.counted, variance, q.by || 'Unknown']);
     if (q.apply && variance !== 0 && en.tracker !== 'Instruments') {
       try {
-        const it = findItem_(en.tracker, en.code);
+        const it = en.row ? itemAtRow_(en.tracker, Number(en.row)) : findItem_(en.tracker, en.code);
         it.sh.getRange(it.row, col_(it.head, 'Qty')).setValue(Number(en.counted));
       } catch (err) { /* item deleted mid-count — recorded but not applied */ }
     }
