@@ -128,6 +128,17 @@
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--pine-deep);color:#fff;padding:11px 20px;border-radius:9px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:50}
   .toast.show{opacity:1}
 
+  /* ---------- login ---------- */
+  #loginWrap{position:fixed;inset:0;background:var(--mist);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
+  .logincard{background:#fff;border:1px solid var(--line);border-top:4px solid var(--gold);border-radius:14px;
+             padding:34px 30px;max-width:380px;width:100%;box-shadow:0 14px 44px rgba(20,60,55,.12)}
+  .logincard img{height:64px;display:block;margin:0 auto 20px}
+  .logincard h2{font-size:17px;text-align:center;margin-bottom:18px;color:var(--pine)}
+  .logincard label{display:block;font-size:12.5px;color:var(--ink-soft);margin:12px 0 4px;font-weight:600}
+  .logincard input{width:100%;padding:12px;border:1px solid var(--line);border-radius:9px;font-size:16px}
+  .logincard .btn{width:100%;margin-top:18px;padding:13px 0;font-size:15px}
+  #loginErr{color:var(--red);font-size:13px;margin-top:10px;min-height:18px;text-align:center}
+
   /* ---------- printable labels ---------- */
   #printArea{display:none}
   .labelgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm;padding:6mm}
@@ -226,7 +237,8 @@
     </div>
     <div class="userbox">
       <div id="userName"></div>
-      <button id="nameBtn" onclick="setMyName()">Set my name</button>
+      <button id="pwBtn" onclick="openPw()" style="display:none">Password</button>
+      <button id="outBtn" onclick="signOut()" style="display:none">Sign out</button>
     </div>
   </header>
 
@@ -287,7 +299,7 @@
   </div>
   <div class="m-actions">
     <button class="btn" onclick="linkDlg.close()">Cancel</button>
-    <button class="btn primary" onclick="openAdd(linkDlg.dataset.code); linkDlg.close()">＋ Add as new item</button>
+    <button class="btn primary" id="linkAddBtn" onclick="openAdd(linkDlg.dataset.code); linkDlg.close()">＋ Add as new item</button>
   </div>
 </dialog>
 
@@ -383,6 +395,35 @@
     <div id="recvList" style="max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"></div>
   </div>
   <div class="m-actions"><button class="btn" onclick="impRecvDlg.close()">Cancel</button></div>
+</dialog>
+
+<div id="loginWrap" style="display:none">
+  <div class="logincard">
+    <img src="logo.png" alt="Bollin Clinic Stock Manager">
+    <h2>Sign in</h2>
+    <label for="liUser">Username</label>
+    <input id="liUser" type="text" autocomplete="username" autocapitalize="none">
+    <label for="liPass">Password</label>
+    <input id="liPass" type="password" autocomplete="current-password"
+           onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn primary" onclick="doLogin()">Sign in</button>
+    <div id="loginErr"></div>
+    <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--ink-soft)">
+      Accounts are created by the clinic administrator.<br>You can change your password after signing in.</div>
+  </div>
+</div>
+
+<dialog id="pwDlg">
+  <div class="m-head">Change password</div>
+  <div class="m-body">
+    <div class="m-row"><label for="pwOld">Current</label><input id="pwOld" type="password"></div>
+    <div class="m-row"><label for="pwNew">New (6+ chars)</label><input id="pwNew" type="password"></div>
+    <div class="m-row"><label for="pwNew2">Repeat new</label><input id="pwNew2" type="password"></div>
+  </div>
+  <div class="m-actions">
+    <button class="btn" onclick="pwDlg.close()">Cancel</button>
+    <button class="btn primary" onclick="doChangePassword()">Change password</button>
+  </div>
 </dialog>
 
 <div id="printArea"></div>
@@ -514,6 +555,7 @@ function handleScan(code){
   }
   // 3. unknown -> link dialog
   $('#linkCode').textContent = code;
+  $('#linkAddBtn').style.display = can('add') ? '' : 'none';
   linkDlg.returnValue=''; linkDlg.dataset.code=code;
   $('#linkSearch').value=''; renderLinkList();
   linkDlg.showModal();
@@ -617,7 +659,7 @@ function tableFor(items, opts={}){
       <td class="qty" data-label="Qty">${it.tracker==='instruments'?'—':it.qty+' '+it.unit}</td>
       <td data-label="Status"><span class="badge ${s.c}">${s.t}</span></td>
       <td class="rowbtns" data-label=""><button onclick='openMove(state.items[${state.items.indexOf(it)}])'>Move</button>
-        <button onclick='openEdit(${state.items.indexOf(it)})'>Edit</button></td>
+        ${can('edit')?`<button onclick='openEdit(${state.items.indexOf(it)})'>Edit</button>`:''}</td>
     </tr>`;
   }).join('');
   return `<table>${head}<tbody>${rows||'<tr><td colspan="8" style="color:var(--ink-soft)">Nothing matches.</td></tr>'}</tbody></table>`;
@@ -646,7 +688,7 @@ function trackerView(key){
         <option value="">All categories</option>
         ${cats.map(c=>`<option ${c===ct?'selected':''}>${c}</option>`).join('')}
       </select>
-      <button class="btn" onclick="openAdd('')">＋ Add item</button>
+      ${can('add')?`<button class="btn" onclick="openAdd('')">＋ Add item</button>`:''}
     </div>
     <div id="tblWrap">${tableFor(items,{expiry: key!=='garments'})}</div>`;
 }
@@ -679,7 +721,7 @@ function dashboardView(){
       <div class="tile bad"  onclick="nav('dash-out')"><div class="n">${out.length}</div><div class="l">Out of stock</div></div>
       <div class="tile exp"  onclick="nav('dash-exp')"><div class="n">${exp.length}</div><div class="l">Expiring ≤ 90 days</div></div>
       <div class="tile"      onclick="nav('instruments')"><div class="n">${away.length}</div><div class="l">Lines out at CSSD</div></div>
-      <div class="tile"><div class="n">£${val.toFixed(0)}</div><div class="l">Stock value (${costed} of ${stock.length} items costed)</div></div>
+      ${can('values')?`<div class="tile"><div class="n">£${val.toFixed(0)}</div><div class="l">Stock value (${costed} of ${stock.length} items costed)</div></div>`:''}
     </div>
     <h1 style="font-size:16px">Needs attention</h1>
     <div class="sub">Low, out of stock and short-dated items across every tracker</div>
@@ -718,10 +760,10 @@ function requestsView(){
         ${r.handledBy?'<div style="font-size:11px;color:var(--ink-soft)">'+r.handledBy+(r.responded?' · '+new Date(r.responded).toLocaleDateString('en-GB'):'')+'</div>':''}</td>
       <td data-label="Remarks">${r.remarks||'—'}</td>
       <td class="rowbtns" data-label="">
-        <select onchange="respondRequest(${ix}, this.value)" style="padding:6px;border:1px solid var(--line);border-radius:6px;font-size:12px">
+        ${can('respond')?`<select onchange="respondRequest(${ix}, this.value)" style="padding:6px;border:1px solid var(--line);border-radius:6px;font-size:12px">
           <option value="">Respond…</option>
           ${RESP_STATUSES.map(s=>`<option>${s}</option>`).join('')}
-        </select></td></tr>`).join('');
+        </select>`:'—'}</td></tr>`).join('');
 
   const doneRows = done.map(({r})=>`<tr>
       <td data-label=""><strong>${r.item}</strong>${r.size?' ('+r.size+')':''}</td>
@@ -821,6 +863,7 @@ const DSTATUS = {
 const dFmt = d => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
 function sterilView(){
+  if((sterTab==='dispatch' && !can('dispatch')) || (sterTab==='receive' && !can('receive'))) sterTab='use';
   const pending = state.dispatch.filter(d=>d.status==='Pending Collection');
   const out     = state.dispatch.filter(d=>d.status==='Out' || d.status==='Partial');
   const tabBtn = (id,label,count)=>`<button onclick="sterTab='${id}';render()"
@@ -837,8 +880,8 @@ function sterilView(){
     <div class="sub">Log instruments as used → dispatch to CSSD once or twice a week → receive them back.</div>
     <div style="border-bottom:1px solid var(--line);margin-bottom:16px;display:flex;gap:4px;overflow-x:auto">
       ${tabBtn('use','1 · Log used', pending.length)}
-      ${tabBtn('dispatch','2 · Dispatch', pending.length)}
-      ${tabBtn('receive','3 · Receive', out.length)}
+      ${can('dispatch')?tabBtn('dispatch','2 · Dispatch', pending.length):''}
+      ${can('receive')?tabBtn('receive','3 · Receive', out.length):''}
       ${tabBtn('history','History','')}
     </div>
     ${body}`;
@@ -1229,80 +1272,68 @@ function printImplantReport(){
     label=from.toLocaleDateString('en-GB')+' – '+to.toLocaleDateString('en-GB');
   }
   to.setHours(23,59,59);
-  const inRange = state.implants.filter(im=>{
-    const d = im[basis] ? new Date(im[basis]) : null;
-    return d && d>=from && d<=to;
-  });
-  if(!inRange.length){ toast('No implant orders in that period'); return; }
+  const rows = state.implants
+    .filter(im=>{ const d = im[basis] ? new Date(im[basis]) : null; return d && d>=from && d<=to; })
+    .sort((a,b)=> new Date(a[basis]) - new Date(b[basis]));
+  if(!rows.length){ toast('No implant orders in that period'); return; }
 
-  // ---- group by the selected date, oldest first ----
-  const groups = {};
-  inRange.forEach(im=>{
-    const key = new Date(im[basis]).toISOString().slice(0,10);
-    (groups[key] = groups[key]||[]).push(im);
-  });
-  const keys = Object.keys(groups).sort();
   const basisLabel = basis==='surgeryDate'?'surgery date':'date ordered';
   const fmt = d => d? new Date(d).toLocaleDateString('en-GB') : '—';
-  const stChip = s => `<span style="display:inline-block;padding:1px 8px;border-radius:99px;font-size:8pt;font-weight:600;
-      background:${s==='Delivered'?'#E4F0ED':s==='Ordered'?'#FFF0D6':'#FCE9E7'};
-      color:${s==='Delivered'?'#0E5048':s==='Ordered'?'#7A4A00':'#A61B1B'}">${s}</span>`;
-  const th = x=>'<th style="border:1px solid #C9D6D2;padding:5px 7px;text-align:left;background:#2B6168;color:#fff;font-size:8.5pt;letter-spacing:.3px">'+x+'</th>';
-  const td = (x,extra)=>'<td style="border:1px solid #C9D6D2;padding:5px 7px;font-size:9pt;'+(extra||'')+'">'+(x??'—')+'</td>';
-
   const totals = {Pending:0, Ordered:0, Delivered:0};
-  inRange.forEach(im=>{ if(totals[im.status]!=null) totals[im.status]++; });
+  rows.forEach(im=>{ if(totals[im.status]!=null) totals[im.status]++; });
 
-  const sections = keys.map(k=>{
-    const d = new Date(k);
-    const title = d.toLocaleDateString('en-GB',{weekday:'long', day:'numeric', month:'long', year:'numeric'});
-    const rows = groups[k].map(im=>'<tr>'+
-        td('<strong>'+im.initials+'</strong>') +
-        td('<span style="font-family:monospace">'+im.pat+'</span>') +
-        td(im.surgeon||'—') +
-        td(fmt(im.surgeryDate)) +
-        td(im.details + (im.remarks?'<div style="font-size:8pt;color:#666">'+im.remarks+'</div>':'')) +
-        td(im.qty||'—','text-align:center') +
-        td(fmt(im.dateOrdered)+(im.orderedBy?'<div style="font-size:8pt;color:#666">'+im.orderedBy+'</div>':'')) +
-        td(stChip(im.status)) +
-        td(im.receivedBy? im.receivedBy+(im.receivedQty?' ×'+im.receivedQty:'')+(im.storage?'<div style="font-size:8pt;color:#666">'+im.storage+'</div>':'') : '—') +
-        td(im.returnDetails? (im.returnedQty?'×'+im.returnedQty+' ':'')+im.returnDetails+'<div style="font-size:8pt;color:#666">'+(im.returnedBy||'')+'</div>' : '—') +
-      '</tr>').join('');
-    return `
-      <div style="page-break-inside:avoid;margin-bottom:7mm">
-        <div style="font-size:11.5pt;font-weight:700;color:#2B6168;border-left:4px solid #B08A3E;
-             padding:2px 0 2px 8px;margin-bottom:2.5mm">${title}
-          <span style="font-weight:400;font-size:9pt;color:#666">— ${groups[k].length} order(s)</span></div>
-        <table style="width:100%;border-collapse:collapse">
-          <thead><tr>${['Patient','PAT no.','Surgeon','Surgery','Implant details','Qty','Ordered','Status','Received / kept in','Returned'].map(th).join('')}</tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>`;
-  }).join('');
+  // Excel-style flat table: one title row, one row per patient, landscape
+  const HEADERS = ['Surgery Date','Patient Initials','PAT Number','Surgeon','Implant Details','Qty',
+    'Date Ordered','Ordered By','Status','Received By','Qty Received','Kept In',
+    'Qty Returned','Return Details','Returned By','Remarks'];
+  const th = x=>'<th style="border:1px solid #9FB6B1;padding:6px 8px;text-align:left;background:#2B6168;color:#fff;font-size:8.5pt;white-space:nowrap">'+x+'</th>';
+  const td = (x,extra)=>'<td style="border:1px solid #B9C9C5;padding:5px 8px;font-size:9pt;vertical-align:top;'+(extra||'')+'">'+((x===null||x===undefined||x==='')?'—':x)+'</td>';
+  const stChip = s => '<span style="font-weight:700;color:'+
+    (s==='Delivered'?'#0E5048':s==='Ordered'?'#7A4A00':'#A61B1B')+'">'+s+'</span>';
+
+  const body = rows.map((im,i)=>'<tr style="background:'+(i%2?'#F2F7F6':'#fff')+'">'+
+      td(fmt(im.surgeryDate),'white-space:nowrap') +
+      td('<strong>'+im.initials+'</strong>','text-align:center') +
+      td('<span style="font-family:monospace">'+im.pat+'</span>','white-space:nowrap') +
+      td(im.surgeon) +
+      td(im.details) +
+      td(im.qty,'text-align:center') +
+      td(fmt(im.dateOrdered),'white-space:nowrap') +
+      td(im.orderedBy) +
+      td(stChip(im.status),'white-space:nowrap') +
+      td(im.receivedBy) +
+      td(im.receivedQty,'text-align:center') +
+      td(im.storage) +
+      td(im.returnedQty,'text-align:center') +
+      td(im.returnDetails) +
+      td(im.returnedBy) +
+      td(im.remarks) +
+    '</tr>').join('');
 
   $('#printArea').innerHTML = `
-    <div style="padding:8mm;font-family:var(--sans)">
-      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2.5px solid #B08A3E;padding-bottom:4mm;margin-bottom:5mm">
-        <div style="display:flex;align-items:center;gap:6mm">
-          <img src="logo.png" style="height:15mm">
-          <div><div style="font-size:15pt;font-weight:700;color:#2B6168">Implant Status Report</div>
-          <div style="font-size:9.5pt;color:#555">${label} · grouped by ${basisLabel}</div></div>
+    <style id="printOrient">@media print{ @page{size:A4 landscape;margin:8mm} }</style>
+    <div style="font-family:var(--sans)">
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2.5px solid #B08A3E;padding-bottom:3mm;margin-bottom:3mm">
+        <div style="display:flex;align-items:center;gap:5mm">
+          <img src="logo.png" style="height:13mm">
+          <div><div style="font-size:14pt;font-weight:700;color:#2B6168">Implant Status Report</div>
+          <div style="font-size:9pt;color:#555">${label} · sorted by ${basisLabel} ·
+            ${rows.length} order(s) — Pending ${totals.Pending} · Ordered ${totals.Ordered} · Delivered ${totals.Delivered}</div></div>
         </div>
         <div style="text-align:right;font-size:8.5pt;color:#666">
           Printed ${new Date().toLocaleString('en-GB')}${myName?'<br>by '+myName:''}</div>
       </div>
-      <div style="display:flex;gap:5mm;margin-bottom:5mm">
-        ${[['Total',inRange.length,'#2B6168'],['Pending',totals.Pending,'#A61B1B'],
-           ['Ordered',totals.Ordered,'#7A4A00'],['Delivered',totals.Delivered,'#0E5048']]
-          .map(x=>`<div style="border:1px solid #C9D6D2;border-radius:2mm;padding:2.5mm 5mm;text-align:center">
-            <div style="font-size:13pt;font-weight:700;color:${x[2]}">${x[1]}</div>
-            <div style="font-size:8pt;color:#666;text-transform:uppercase;letter-spacing:.5px">${x[0]}</div></div>`).join('')}
-      </div>
-      ${sections}
-      <div style="font-size:8pt;color:#888;margin-top:4mm;border-top:1px solid #ddd;padding-top:2mm">
-        Bollin Clinic Stock Manager · Implant orders ${label} · ${inRange.length} order(s) total</div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>${HEADERS.map(th).join('')}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+      <div style="font-size:8pt;color:#888;margin-top:3mm">Bollin Clinic Stock Manager</div>
     </div>`;
-  setTimeout(()=>window.print(), 250);
+  setTimeout(()=>{
+    window.print();
+    // remove the landscape override afterwards so label printing stays portrait
+    window.addEventListener('afterprint', ()=>{ const s=document.getElementById('printOrient'); if(s) s.remove(); }, {once:true});
+  }, 250);
 }
 
 /* ---------------- stocktake (month-end & annual checks) ---------------- */
@@ -1593,7 +1624,9 @@ function goHome(e){
   const d=document.querySelector('nav a[data-view=dashboard]'); if(d) d.classList.add('active');
   nav('dashboard');
 }
-function nav(view){ currentView=view; window._q=''; window._store=''; window._cat=''; render(); }
+function nav(view){
+  if(!viewAllowed(view)) view='dashboard';
+  currentView=view; window._q=''; window._store=''; window._cat=''; render(); }
 document.querySelectorAll('nav a').forEach(a=>a.addEventListener('click',e=>{
   e.preventDefault();
   document.querySelectorAll('nav a').forEach(x=>x.classList.remove('active'));
@@ -1622,12 +1655,16 @@ const LIVE = !!CONFIG.API_URL;
 state.alerts = state.alerts || [];
 
 async function api(payload){
+  if(session) payload.token = session.token;
   const res = await fetch(CONFIG.API_URL, {
     method:'POST', body: JSON.stringify(payload),
     headers:{'Content-Type':'text/plain;charset=utf-8'}   // simple request: no CORS preflight
   });
   const data = await res.json();
-  if(!data.ok) throw new Error(data.error||'Server error');
+  if(!data.ok){
+    if(data.error==='AUTH'){ signOut(); showLogin('Session expired — please sign in again'); }
+    throw new Error(data.message||data.error||'Server error');
+  }
   return data;
 }
 
@@ -1686,6 +1723,10 @@ async function loadAll(){
                                           it.tracker===String(b.Tracker).toLowerCase());
       if(i>=0) state.barcodeLinks[String(b.Barcode)] = i;
     });
+    if(session && data.role){ session.role = data.role; session.displayName = data.displayName || session.displayName;
+      myName = session.displayName;
+      try{ localStorage.setItem('bollin_session', JSON.stringify(session)); }catch(e){}
+      paintName(); applyNavPerms(); }
     $('#scanEcho').textContent = '';
     toast('Synced with Google Sheets');
   }catch(err){
@@ -1695,25 +1736,91 @@ async function loadAll(){
   render();
 }
 
-/* ---------------- user name (asked once, kept on this device) ---------------- */
+/* ---------------- session, roles & permissions ---------------- */
+let session = null;   // {token, role, displayName, username}
 let myName = '';
-try { myName = localStorage.getItem('bollin_name') || ''; } catch(e){}
-function setMyName(){
-  const n = prompt('Your name (recorded against stock movements):', myName);
-  if(n===null) return;
-  myName = n.trim();
-  try { localStorage.setItem('bollin_name', myName); } catch(e){}
-  paintName();
+try { session = JSON.parse(localStorage.getItem('bollin_session')||'null'); } catch(e){}
+if(session) myName = session.displayName || '';
+
+const PERMS = {
+  admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1},
+  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1},
+  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0}
+};
+function role(){ return LIVE ? (session ? session.role : null) : 'admin'; }
+function can(p){ const r = role(); return !!(r && PERMS[r] && PERMS[r][p]); }
+
+function showLogin(msg){
+  $('#loginWrap').style.display = 'flex';
+  $('#loginErr').textContent = msg||'';
+  $('#liPass').value='';
+  setTimeout(()=>$('#liUser').focus(), 50);
+}
+function hideLogin(){ $('#loginWrap').style.display = 'none'; }
+
+async function doLogin(){
+  const u = $('#liUser').value.trim(), p = $('#liPass').value;
+  if(!u || !p){ $('#loginErr').textContent = 'Enter username and password'; return; }
+  $('#loginErr').textContent = 'Signing in…';
+  try{
+    const res = await fetch(CONFIG.API_URL, {method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'login', username:u, password:p})});
+    const data = await res.json();
+    if(!data.ok){ $('#loginErr').textContent = data.error||'Sign-in failed'; return; }
+    session = {token:data.token, role:data.role, displayName:data.displayName, username:data.username};
+    myName = data.displayName;
+    try{ localStorage.setItem('bollin_session', JSON.stringify(session)); }catch(e){}
+    hideLogin(); paintName();
+    if(!(currentView in TRACKER_TAB) && !viewAllowed(currentView)) nav('dashboard');
+    loadAll();
+  }catch(err){ $('#loginErr').textContent = 'Could not reach the server'; }
+}
+function signOut(){
+  session = null; myName='';
+  try{ localStorage.removeItem('bollin_session'); }catch(e){}
+  paintName(); showLogin();
+}
+function openPw(){
+  ['pwOld','pwNew','pwNew2'].forEach(id=>$('#'+id).value='');
+  pwDlg.showModal();
+}
+async function doChangePassword(){
+  const o=$('#pwOld').value, n=$('#pwNew').value, n2=$('#pwNew2').value;
+  if(n.length<6){ toast('New password must be at least 6 characters'); return; }
+  if(n!==n2){ toast('New passwords do not match'); return; }
+  try{
+    await api({action:'changePassword', oldPassword:o, newPassword:n});
+    pwDlg.close(); toast('Password changed');
+  }catch(err){ toast(err.message); }
 }
 function paintName(){
-  $('#userName').textContent = myName ? myName : (LIVE?'Connected':'Demo mode');
-  $('#nameBtn').textContent = myName ? 'Change name' : 'Set my name';
+  const r = role();
+  $('#userName').textContent = LIVE
+    ? (session ? session.displayName + ' · ' + session.role : 'Not signed in')
+    : 'Demo mode';
+  $('#pwBtn').style.display = (LIVE && session) ? '' : 'none';
+  $('#outBtn').style.display = (LIVE && session) ? '' : 'none';
+}
+function viewAllowed(v){
+  if(v==='stocktake') return can('stocktake');
+  if(v==='labels') return can('labels');
+  if(v==='implants') return can('implants');
+  if(v==='alerts') return can('alerts');
+  return true;
+}
+function applyNavPerms(){
+  document.querySelectorAll('nav a').forEach(a=>{
+    a.style.display = viewAllowed(a.dataset.view) ? '' : 'none';
+  });
 }
 paintName();
 
-/* ---------------- init ---------------- */
-render();      // instant paint (demo data or empty)
-loadAll();     // then sync from Google Sheets if configured
+/* ---------------- init ---------------- *//* ---------------- init ---------------- */
+applyNavPerms();
+render();                          // instant paint
+if(LIVE && !session) showLogin();  // must sign in before data loads
+else loadAll();
 </script>
 </body>
 </html>

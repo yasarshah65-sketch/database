@@ -21,6 +21,17 @@ function doGet(e) {
   return json_(getAll_());
 }
 
+// action -> minimum role. Roles: common < staff < admin
+const ACTION_ROLE = {
+  getAll:'common', move:'common', link:'common', useLog:'common', request:'common',
+  changePassword:'common',
+  stocktake:'staff', respond:'staff', ack:'staff',
+  implantAdd:'staff', implantUpdate:'staff',
+  dispatchAssign:'staff', dispatchReceive:'staff', dispatchAdd:'staff', dispatchReturn:'staff',
+  addItem:'admin', updateItem:'admin', setBarcodes:'admin'
+};
+const ROLE_RANK = { common: 0, staff: 1, admin: 2 };
+
 function doPost(e) {
   let req = {};
   try { req = JSON.parse(e.postData.contents); } catch (err) {
@@ -29,8 +40,16 @@ function doPost(e) {
   const lock = LockService.getScriptLock();        // serialise writes
   lock.waitLock(20000);
   try {
+    if (req.action === 'login') return json_(login_(req));
+    const session = auth_(req.token);
+    if (!session) return json_({ ok: false, error: 'AUTH', message: 'Please sign in' });
+    const need = ACTION_ROLE[req.action] || 'admin';
+    if (ROLE_RANK[session.role] < ROLE_RANK[need])
+      return json_({ ok: false, error: 'Your access level (' + session.role + ') cannot do this' });
+    req._session = session;
     switch (req.action) {
-      case 'getAll':    return json_(getAll_());
+      case 'getAll':    return json_(getAll_(req._session));
+      case 'changePassword': return json_(changePassword_(req));
       case 'move':      return json_(move_(req));
       case 'link':      return json_(link_(req));
       case 'addItem':   return json_(addItem_(req));
@@ -160,12 +179,18 @@ function setting_(key, fallback) {
 
 /* ================================ actions ================================= */
 
-function getAll_() {
+function getAll_(session) {
   const items = {};
-  ITEM_TABS.forEach(t => items[t] = readTab_(t));
+  const hideCost = session && session.role === 'common';
+  ITEM_TABS.forEach(t => {
+    items[t] = readTab_(t);
+    if (hideCost) items[t].forEach(r => { delete r.UnitCost; });
+  });
   const tx = readTab_('Transactions');
   return {
     ok: true,
+    role: session ? session.role : 'admin',
+    displayName: session ? session.name : '',
     items: items,
     transactions: tx.slice(-200).reverse(),
     requests: readTab_('Requests').reverse(),
@@ -423,6 +448,22 @@ function migrate() {
       }
     });
   }
+  // 1c. Users tab
+  if (!ss.getSheetByName('Users')) {
+    const us = ss.insertSheet('Users');
+    us.getRange(1, 1, 1, USER_HEADERS.length).setValues([USER_HEADERS])
+      .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+    us.setFrozenRows(1);
+    us.getRange(2, 1, 3, USER_HEADERS.length).setValues([
+      ['yasar', 'ChangeMe123', 'admin', 'Yasar', 'yes'],
+      ['stockteam', 'ChangeMe123', 'staff', 'Stock Team', 'yes'],
+      ['scrubs', 'ChangeMe123', 'common', 'Scrub Team', 'yes']
+    ]);
+    us.getRange(6, 1).setValue(
+      'Roles: admin = everything · staff = all except adding/editing items · common = scan in/out + log used only, no values. ' +
+      'Type an initial password in the Password column — it is replaced by a secure hash the first time the person signs in. Active: yes/no.')
+      .setFontStyle('italic').setFontSize(9);
+  }
   // 2. Requests tab: old schema (Tracker/Code, HandledAt) -> new (Size, DateResponded, Remarks)
   const sh = ss.getSheetByName('Requests');
   const head = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0].map(String);
@@ -486,6 +527,86 @@ function stocktake_(q) {
     }
   });
   return { ok: true, saved: (q.entries || []).length };
+}
+
+/* ============================ users & auth =============================== */
+
+const USER_HEADERS = ['Username','Password','Role','DisplayName','Active'];
+
+function hash_(username, password) {
+  const raw = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
+    String(username).toLowerCase() + ':' + String(password), Utilities.Charset.UTF_8);
+  return raw.map(b => ((b & 0xFF) + 0x100).toString(16).slice(1)).join('');
+}
+
+function usersSheet_() {
+  const sh = ss_().getSheetByName('Users');
+  if (!sh) throw 'Users tab missing — run migrate()';
+  return sh;
+}
+
+function login_(q) {
+  const u = String(q.username || '').trim().toLowerCase();
+  const p = String(q.password || '');
+  if (!u || !p) return { ok: false, error: 'Enter username and password' };
+  const sh = usersSheet_();
+  const vals = sh.getDataRange().getValues();
+  for (let r = 1; r < vals.length; r++) {
+    const [un, stored, role, name, active] = vals[r];
+    if (String(un).trim().toLowerCase() !== u) continue;
+    if (String(active).toLowerCase() === 'no') return { ok: false, error: 'Account disabled' };
+    const s = String(stored);
+    const matchHash = /^[0-9a-f]{64}$/.test(s) && s === hash_(u, p);
+    const matchPlain = !/^[0-9a-f]{64}$/.test(s) && s === p;
+    if (matchHash || matchPlain) {
+      if (matchPlain) sh.getRange(r + 1, 2).setValue(hash_(u, p));  // upgrade to hash
+      const token = Utilities.getUuid();
+      saveToken_(token, { u: u, role: String(role || 'common').toLowerCase(),
+                          name: String(name || u), exp: Date.now() + 7 * 86400000 });
+      return { ok: true, token: token, role: String(role || 'common').toLowerCase(),
+               displayName: String(name || u), username: u };
+    }
+    return { ok: false, error: 'Wrong password' };
+  }
+  return { ok: false, error: 'Unknown username' };
+}
+
+function changePassword_(q) {
+  const s = q._session;
+  const sh = usersSheet_();
+  const vals = sh.getDataRange().getValues();
+  for (let r = 1; r < vals.length; r++) {
+    if (String(vals[r][0]).trim().toLowerCase() !== s.u) continue;
+    const stored = String(vals[r][1]);
+    const okOld = (/^[0-9a-f]{64}$/.test(stored) && stored === hash_(s.u, q.oldPassword)) ||
+                  (!/^[0-9a-f]{64}$/.test(stored) && stored === String(q.oldPassword));
+    if (!okOld) return { ok: false, error: 'Current password is wrong' };
+    if (String(q.newPassword || '').length < 6)
+      return { ok: false, error: 'New password must be at least 6 characters' };
+    sh.getRange(r + 1, 2).setValue(hash_(s.u, q.newPassword));
+    return { ok: true };
+  }
+  return { ok: false, error: 'User not found' };
+}
+
+function saveToken_(token, data) {
+  const props = PropertiesService.getScriptProperties();
+  let all = {};
+  try { all = JSON.parse(props.getProperty('tokens') || '{}'); } catch (e) {}
+  const now = Date.now();
+  Object.keys(all).forEach(t => { if (all[t].exp < now) delete all[t]; });
+  all[token] = data;
+  props.setProperty('tokens', JSON.stringify(all));
+}
+
+function auth_(token) {
+  if (!token) return null;
+  let all = {};
+  try { all = JSON.parse(
+    PropertiesService.getScriptProperties().getProperty('tokens') || '{}'); } catch (e) {}
+  const s = all[token];
+  if (!s || s.exp < Date.now()) return null;
+  return s;
 }
 
 /* ======================= daily alert + escalation ========================= */
