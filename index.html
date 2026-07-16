@@ -24,6 +24,8 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
   :root{
     --pine:#2B6168;      /* primary — Bollin teal (from logo) */
@@ -1147,7 +1149,8 @@ function implantsView(){
         <span>to</span>
         <input id="repTo" type="date" style="padding:8px;border:1px solid var(--line);border-radius:8px">
       </span>
-      <button class="btn" onclick="printImplantReport()">Print / PDF</button>
+      <button class="btn primary" onclick="implantReportPDF()">Download PDF</button>
+      <button class="btn" onclick="printImplantReport()">Print</button>
     </div>
     <table><thead><tr><th>Patient</th><th>Surgeon</th><th>Surgery</th><th>Implants</th>
       <th>Ordered</th><th>Status</th><th>Return</th><th></th></tr></thead>
@@ -1253,29 +1256,110 @@ function implantScan(code){
   impRecvDlg.showModal();
 }
 
-function printImplantReport(){
+function implantReportData(){
   const range = $('#repRange').value, basis = $('#repBasis').value;
   const today = new Date(); today.setHours(0,0,0,0);
   let from, to, label;
-  if(range==='day'){ from=new Date(today); to=new Date(today); label='Today, '+today.toLocaleDateString('en-GB'); }
+  if(range==='day'){ from=new Date(today); to=new Date(today); label='Today '+today.toLocaleDateString('en-GB'); }
   else if(range==='week'){
     from=new Date(today); from.setDate(from.getDate()-((from.getDay()+6)%7));
     to=new Date(from); to.setDate(to.getDate()+6);
-    label='Week '+from.toLocaleDateString('en-GB')+' – '+to.toLocaleDateString('en-GB');
+    label=from.toLocaleDateString('en-GB')+' - '+to.toLocaleDateString('en-GB');
   } else if(range==='month'){
     from=new Date(today.getFullYear(),today.getMonth(),1);
     to=new Date(today.getFullYear(),today.getMonth()+1,0);
     label=from.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
   } else {
-    if(!$('#repFrom').value || !$('#repTo').value){ toast('Pick both custom dates'); return; }
+    if(!$('#repFrom').value || !$('#repTo').value){ toast('Pick both custom dates'); return null; }
     from=new Date($('#repFrom').value); to=new Date($('#repTo').value);
-    label=from.toLocaleDateString('en-GB')+' – '+to.toLocaleDateString('en-GB');
+    label=from.toLocaleDateString('en-GB')+' - '+to.toLocaleDateString('en-GB');
   }
   to.setHours(23,59,59);
   const rows = state.implants
     .filter(im=>{ const d = im[basis] ? new Date(im[basis]) : null; return d && d>=from && d<=to; })
     .sort((a,b)=> new Date(a[basis]) - new Date(b[basis]));
-  if(!rows.length){ toast('No implant orders in that period'); return; }
+  if(!rows.length){ toast('No implant orders in that period'); return null; }
+  return {rows, label, basis};
+}
+
+async function implantReportPDF(){
+  const data = implantReportData();
+  if(!data) return;
+  const {rows, label, basis} = data;
+  const fmt = d => d? new Date(d).toLocaleDateString('en-GB') : '';
+  const totals = {Pending:0, Ordered:0, Delivered:0};
+  rows.forEach(im=>{ if(totals[im.status]!=null) totals[im.status]++; });
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:'landscape', unit:'mm', format:'a4'});
+  const W = doc.internal.pageSize.getWidth();
+
+  // letterhead logo (best effort — skipped silently if it can't load)
+  try{
+    const blob = await fetch('logo.png').then(r=>r.blob());
+    const dataUrl = await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(blob);});
+    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.src=dataUrl;});
+    const hMM = 14, wMM = hMM * (img.width/img.height);
+    doc.addImage(dataUrl, 'PNG', 10, 8, wMM, hMM);
+  }catch(e){}
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(43,97,104);
+  doc.text('Implant Status Report', W-10, 13, {align:'right'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,90,90);
+  doc.text(label + '  ·  sorted by ' + (basis==='surgeryDate'?'surgery date':'date ordered') +
+    '  ·  ' + rows.length + ' orders   (Pending ' + totals.Pending +
+    '  ·  Ordered ' + totals.Ordered + '  ·  Delivered ' + totals.Delivered + ')', W-10, 18.5, {align:'right'});
+  doc.text('Printed ' + new Date().toLocaleString('en-GB') + (myName?' by '+myName:''), W-10, 23, {align:'right'});
+  doc.setDrawColor(176,138,62); doc.setLineWidth(0.8); doc.line(10, 25.5, W-10, 25.5);
+
+  doc.autoTable({
+    startY: 28,
+    margin: {left:10, right:10},
+    head: [['Surgery\nDate','Patient\nInitials','PAT\nNumber','Surgeon','Implant Details','Qty',
+            'Date\nOrdered','Ordered By','Status','Received By','Qty\nRec.','Kept In',
+            'Qty\nRet.','Return Details','Returned By','Remarks']],
+    body: rows.map(im=>[
+      fmt(im.surgeryDate), im.initials, im.pat, im.surgeon||'', im.details, im.qty??'',
+      fmt(im.dateOrdered), im.orderedBy||'', im.status, im.receivedBy||'',
+      im.receivedQty??'', im.storage||'', im.returnedQty??'', im.returnDetails||'',
+      im.returnedBy||'', im.remarks||'' ]),
+    theme: 'grid',
+    styles: {font:'helvetica', fontSize:7.5, cellPadding:1.6, lineColor:[185,201,197],
+             lineWidth:0.15, textColor:[23,37,31], overflow:'linebreak', valign:'middle'},
+    headStyles: {fillColor:[43,97,104], textColor:255, fontSize:7.5, fontStyle:'bold',
+                 halign:'left', valign:'middle'},
+    alternateRowStyles: {fillColor:[242,247,246]},
+    columnStyles: {
+      0:{cellWidth:16}, 1:{cellWidth:13, halign:'center'}, 2:{cellWidth:16},
+      3:{cellWidth:20}, 4:{cellWidth:38}, 5:{cellWidth:8, halign:'center'},
+      6:{cellWidth:16}, 7:{cellWidth:16}, 8:{cellWidth:15},
+      9:{cellWidth:16}, 10:{cellWidth:9, halign:'center'}, 11:{cellWidth:18},
+      12:{cellWidth:9, halign:'center'}, 13:{cellWidth:20}, 14:{cellWidth:16}
+      /* Remarks takes the remaining ~31mm automatically */
+    },
+    didParseCell: d => {
+      if(d.section==='body' && d.column.index===8){
+        d.cell.styles.fontStyle='bold';
+        d.cell.styles.textColor = d.cell.raw==='Delivered' ? [14,80,72]
+          : d.cell.raw==='Ordered' ? [122,74,0] : [166,27,27];
+      }
+    },
+    didDrawPage: d => {
+      doc.setFontSize(7.5); doc.setTextColor(140,140,140);
+      doc.text('Bollin Clinic Stock Manager — Implant orders ' + label,
+               10, doc.internal.pageSize.getHeight()-6);
+      doc.text('Page ' + d.pageNumber, W-10, doc.internal.pageSize.getHeight()-6, {align:'right'});
+    }
+  });
+
+  doc.save('Implant_Report_' + label.replace(/[^0-9A-Za-z]+/g,'_') + '.pdf');
+  toast('PDF downloaded');
+}
+
+function printImplantReport(){
+  const data = implantReportData();
+  if(!data) return;
+  const {rows, label, basis} = data;
 
   const basisLabel = basis==='surgeryDate'?'surgery date':'date ordered';
   const fmt = d => d? new Date(d).toLocaleDateString('en-GB') : '—';
