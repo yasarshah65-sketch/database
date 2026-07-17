@@ -399,6 +399,24 @@
   <div class="m-actions"><button class="btn" onclick="impRecvDlg.close()">Cancel</button></div>
 </dialog>
 
+<dialog id="instDlg">
+  <div class="m-head" id="instDlgTitle">Add instrument / tray</div>
+  <div class="m-body">
+    <div class="m-row"><label for="inCode">Code *</label><input id="inCode" type="text" placeholder="CSSD / tag code" style="font-family:var(--mono)"></div>
+    <div class="m-row"><label for="inName">Name *</label><input id="inName" type="text" placeholder="e.g. Basic Plastic Tray"></div>
+    <div class="m-row"><label for="inType">Type</label>
+      <select id="inType"><option>Tray</option><option>Instrument</option></select></div>
+    <div class="m-row"><label for="inDesc">Description</label><input id="inDesc" type="text" placeholder="Optional"></div>
+    <div class="m-row"><label for="inQty">Instruments in tray</label><input id="inQty" type="number" min="1" value="1"></div>
+    <div class="m-row"><label for="inExp">Sterile expiry</label><input id="inExp" type="date" title="Leave empty if unknown — set automatically at next sterilisation"></div>
+    <div class="m-row"><label for="inNotes">Notes</label><input id="inNotes" type="text"></div>
+  </div>
+  <div class="m-actions">
+    <button class="btn" onclick="instDlg.close()">Cancel</button>
+    <button class="btn primary" id="instDlgSave" onclick="saveInstrument()">Add to register</button>
+  </div>
+</dialog>
+
 <div id="loginWrap" style="display:none">
   <div class="logincard">
     <img src="logo.png" alt="Bollin Clinic Stock Manager">
@@ -517,7 +535,8 @@ document.addEventListener('keydown', e => {
     // typing in a form field: still allow scans — bursts are distinguishable,
     // but keep it simple in v1: ignore while a dialog is open
     if($('#moveDlg').open || $('#linkDlg').open || $('#addDlg').open ||
-       $('#impDlg').open || $('#impRetDlg').open || $('#impRecvFormDlg').open) return;
+       $('#impDlg').open || $('#impRetDlg').open || $('#impRecvFormDlg').open ||
+       $('#instDlg').open) return;
   }
   const now = Date.now();
   if(now - lastKey > 80) buf='';
@@ -723,6 +742,7 @@ function dashboardView(){
       <div class="tile bad"  onclick="nav('dash-out')"><div class="n">${out.length}</div><div class="l">Out of stock</div></div>
       <div class="tile exp"  onclick="nav('dash-exp')"><div class="n">${exp.length}</div><div class="l">Expiring ≤ 90 days</div></div>
       <div class="tile"      onclick="nav('instruments')"><div class="n">${away.length}</div><div class="l">Lines out at CSSD</div></div>
+      <div class="tile warn" onclick="sterTab='onhand';nav('instruments')"><div class="n">${instExpiring().length}</div><div class="l">Instruments expiring ≤ 60 days</div></div>
       ${can('values')?`<div class="tile"><div class="n">£${val.toFixed(0)}</div><div class="l">Stock value (${costed} of ${stock.length} items costed)</div></div>`:''}
     </div>
     <h1 style="font-size:16px">Needs attention</h1>
@@ -876,6 +896,7 @@ function sterilView(){
   if(sterTab==='use') body = sterilUseTab(pending);
   else if(sterTab==='dispatch') body = sterilDispatchTab(pending);
   else if(sterTab==='receive') body = sterilReceiveTab(out);
+  else if(sterTab==='onhand') body = sterilOnHandTab();
   else body = sterilHistoryTab();
   return `
     <h1>Sterilisation</h1>
@@ -884,6 +905,7 @@ function sterilView(){
       ${tabBtn('use','1 · Log used', pending.length)}
       ${can('dispatch')?tabBtn('dispatch','2 · Dispatch', pending.length):''}
       ${can('receive')?tabBtn('receive','3 · Receive', out.length):''}
+      ${tabBtn('onhand','On hand', instExpiring().length)}
       ${tabBtn('history','History','')}
     </div>
     ${body}`;
@@ -1019,7 +1041,17 @@ async function doReceive(){
   if(!picked.length){ toast('Tick at least one item'); return; }
   const by = myName || prompt('Received by:','') || 'Unknown';
   if(!myName && by!=='Unknown'){ myName=by; try{localStorage.setItem('bollin_name',myName);}catch(e){} paintName(); }
-  picked.forEach(d=>{ d.dateReturned=new Date().toISOString(); d.returnedBy=by; d.qtyIn=d.qtyOut; d.status='Returned'; });
+  picked.forEach(d=>{
+    d.dateReturned=new Date().toISOString(); d.returnedBy=by; d.qtyIn=d.qtyOut; d.status='Returned';
+    const reg = state.items.find(i=>i.tracker==='instruments' && (i.code===d.code || i.barcode===d.code));
+    const base = d.dateSent ? new Date(d.dateSent) : new Date();
+    base.setFullYear(base.getFullYear()+1);
+    if(reg){ reg.expiry = base.toISOString().slice(0,10); reg.status='At Bollin'; }
+    else if(d.code) state.items.push({tracker:'instruments', _row:null, code:d.code, barcode:d.code,
+      name:d.name||d.code, cat:'Instrument', supplier:'', loc:'Bollin', unit:'Tray',
+      qty:d.qtyOut||1, reorder:0, cost:null, expiry:base.toISOString().slice(0,10),
+      batch:'', status:'At Bollin'});
+  });
   const rows = picked.map(d=>d._row).filter(Boolean);
   selRcv.clear(); render();
   toast(picked.length+' item(s) received back');
@@ -1061,6 +1093,102 @@ function refreshSterilTable(){
   if(fresh) el.innerHTML = fresh.innerHTML;
 }
 
+/* --- tab: on hand (instrument register + expiry) --- */
+function instDaysLeft(it){ return it.expiry ? Math.round((new Date(it.expiry)-new Date())/86400000) : null; }
+function instIsOut(code){ return state.dispatch.some(d=>(d.status==='Out'||d.status==='Partial') && d.code===code); }
+function instExpiring(){
+  return state.items.filter(i=>i.tracker==='instruments')
+    .filter(i=>{ const d=instDaysLeft(i); return d!=null && d<=60; });
+}
+function sterilOnHandTab(){
+  const q = (window._iq||'').toLowerCase();
+  const all = state.items.filter(i=>i.tracker==='instruments')
+    .filter(i=>!q || i.name.toLowerCase().includes(q) || (i.code||'').toLowerCase().includes(q));
+  // expiring soonest first, no-expiry last
+  all.sort((a,b)=>{
+    const da=instDaysLeft(a), db=instDaysLeft(b);
+    if(da==null && db==null) return a.name.localeCompare(b.name);
+    if(da==null) return 1; if(db==null) return -1;
+    return da-db;
+  });
+  const expSoon = instExpiring();
+  const banner = expSoon.length ? `
+    <div class="note" style="background:var(--red-bg);border-color:#E5B5B0;color:var(--red)">
+      <strong>${expSoon.length} instrument(s) expire within 60 days</strong> — plan re-sterilisation:
+      ${expSoon.slice(0,6).map(i=>i.name).join(' · ')}${expSoon.length>6?' · …':''}
+    </div>` : '';
+  const rows = all.map(it=>{
+    const d = instDaysLeft(it);
+    const expBadge = d==null ? '<span style="color:var(--ink-soft)">not set</span>'
+      : d<0 ? '<span class="badge b-out">Expired '+(-d)+'d ago</span>'
+      : d<=60 ? '<span class="badge b-low">'+d+'d left</span>'
+      : new Date(it.expiry).toLocaleDateString('en-GB');
+    const where = instIsOut(it.code||it.barcode)
+      ? '<span class="badge b-exp">At CSSD</span>' : '<span class="badge b-ok">At Bollin</span>';
+    return `<tr style="${d!=null&&d<=60?'background:#FFF7F0':''}">
+      <td data-label=""><strong>${it.name}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${it.code||it.barcode||''}</span></td>
+      <td data-label="Type">${it.cat||'—'}</td>
+      <td class="qty" data-label="In tray">${it.qty||1}</td>
+      <td data-label="Sterile until">${expBadge}</td>
+      <td data-label="Where">${where}</td>
+    </tr>`;
+  }).join('');
+  return `${banner}
+    <div class="toolrow">
+      ${can('instr')?`<button class="btn primary" onclick="openInstrument('')">＋ Add instrument</button>`:''}
+      <input type="search" placeholder="Search instrument or code…" value="${window._iq||''}"
+             oninput="window._iq=this.value;refreshOnHand()">
+      <span style="color:var(--ink-soft);font-size:13px;margin-left:auto">${all.length} on register</span>
+    </div>
+    <div class="sub">What we hold, with sterile expiry. Expiry is assigned automatically as dispatch date + 1 year when items come back from CSSD. Unknown items join the register as they are received.</div>
+    <div id="ohWrap"><table><thead><tr><th>Instrument / Tray</th><th>Type</th><th class="qty">In tray</th>
+      <th>Sterile until</th><th>Where</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="5" style="color:var(--ink-soft)">No instruments on the register yet.</td></tr>'}</tbody></table></div>`;
+}
+function refreshOnHand(){
+  if(currentView!=='instruments' || sterTab!=='onhand') return;
+  const el = document.getElementById('ohWrap');
+  if(!el) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = sterilOnHandTab();
+  const fresh = tmp.querySelector('#ohWrap');
+  if(fresh) el.innerHTML = fresh.innerHTML;
+}
+
+/* --- instrument register add (manual or from unknown scan) --- */
+let instAfterSave = null;   // e.g. log-as-used after registering a scanned code
+function openInstrument(code, afterSave){
+  instAfterSave = afterSave || null;
+  $('#inCode').value = code||'';
+  ['inName','inDesc','inNotes'].forEach(id=>$('#'+id).value='');
+  $('#inType').value='Tray'; $('#inQty').value=1; $('#inExp').value='';
+  $('#instDlgTitle').textContent = code ? 'New code scanned — add its details' : 'Add instrument / tray';
+  instDlg.showModal();
+  (code ? $('#inName') : $('#inCode')).focus();
+}
+async function saveInstrument(){
+  const code = $('#inCode').value.trim(), name = $('#inName').value.trim();
+  if(!code || !name){ toast('Code and name are required'); return; }
+  const it = {tracker:'instruments', _row:null, code, barcode:code, name,
+    cat:$('#inType').value, supplier:'', loc:'Bollin', unit:'Tray',
+    qty:Math.max(1,parseInt($('#inQty').value||'1',10)), reorder:0, cost:null,
+    expiry:$('#inExp').value||null, batch:'', status:'At Bollin'};
+  state.items.push(it);
+  state.barcodeLinks[code] = state.items.length-1;
+  instDlg.close();
+  toast('Added to register: '+name);
+  const after = instAfterSave; instAfterSave = null;
+  if(after) after(it); else render();
+  if(LIVE){
+    try{
+      await api({action:'instrumentAdd', fields:{Code:code, Barcode:code, Name:name,
+        Category:it.cat, Description:$('#inDesc').value.trim(), QtyInTray:it.qty,
+        Expiry:it.expiry, Notes:$('#inNotes').value.trim(), Status:'At Bollin'}});
+      loadAll();
+    }catch(err){ toast('Not saved to sheet — '+err.message); }
+  }
+}
+
 /* --- shared helpers --- */
 function toggleSel(set, ix){ set.has(ix) ? set.delete(ix) : set.add(ix); render(); }
 function selAll(set, status, on){
@@ -1080,7 +1208,15 @@ function nextDispatchRef(){
 }
 function sterilScan(code){
   const norm = c => String(c||'').trim();
-  if(sterTab==='use'){ logUsed(norm(code), 1); return; }
+  if(sterTab==='use' || sterTab==='onhand'){
+    const cd = norm(code);
+    const known = state.items.some(i=>i.tracker==='instruments' && (i.code===cd || i.barcode===cd));
+    if(!known && can('instr')){
+      openInstrument(cd, (it)=>{ logUsed(it.code, 1); });   // register, then log as used
+      return;
+    }
+    logUsed(cd, 1); return;
+  }
   if(sterTab==='dispatch'){
     const ix = state.dispatch.findIndex(d=>d.status==='Pending Collection' && d.code===norm(code));
     if(ix>=0){ selDsp.add(ix); render(); toast('Ticked for dispatch: '+(state.dispatch[ix].name||code)); }
@@ -1768,9 +1904,10 @@ async function loadAll(){
   $('#scanEcho').textContent = 'Loading…';
   try{
     const data = await api({action:'getAll'});
-    state.items = [];
-    for(const tab of Object.keys(data.items))
-      data.items[tab].forEach(r => state.items.push(mapItem(tab, r)));
+    const fresh = [];
+    for(const tab of Object.keys(data.items||{}))
+      (data.items[tab]||[]).forEach(r => fresh.push(mapItem(tab, r)));
+    state.items = fresh;   // swap in only after successful parse
     state.log = data.transactions.map(t=>({ts:t.Timestamp, dir:t.Direction,
       name:t.Name, code:t.Code, qty:t.Qty, by:t.By, tracker:String(t.Tracker||'').toLowerCase(),
       batch:t.Batch, expiry:t.Expiry}));
@@ -1827,9 +1964,9 @@ try { session = JSON.parse(localStorage.getItem('bollin_session')||'null'); } ca
 if(session) myName = session.displayName || '';
 
 const PERMS = {
-  admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1},
-  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1},
-  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0}
+  admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1},
+  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1},
+  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0, instr:0}
 };
 function role(){ return LIVE ? (session ? session.role : null) : 'admin'; }
 function can(p){ const r = role(); return !!(r && PERMS[r] && PERMS[r][p]); }
