@@ -754,18 +754,119 @@ function listView(title, filter){
   return `<h1>${title}</h1><div class="sub">&nbsp;</div>` + tableFor(state.items.filter(filter));
 }
 
+function actBadge(a){
+  const cls = /in$|received|added|registered/i.test(a)?'b-ok'
+    : /out$|dispatched/i.test(a)?'b-out'
+    : /used|stocktake/i.test(a)?'b-low' : 'b-exp';
+  return `<span class="badge ${cls}">${a||'—'}</span>`;
+}
 function logView(){
   const rows = state.log.map(l=>`<tr>
-      <td data-label=""><strong>${l.name}</strong></td>
-      <td data-label="Direction"><span class="badge ${l.dir==='in'?'b-ok':'b-out'}">${l.dir==='in'?'IN':'OUT'}</span></td>
-      <td data-label="When">${new Date(l.ts).toLocaleString('en-GB')}</td>
+      <td data-label=""><strong>${l.name||'—'}</strong></td>
+      <td data-label="Activity">${actBadge(l.activity)}</td>
+      <td data-label="When">${l.ts?new Date(l.ts).toLocaleString('en-GB'):''}</td>
       <td class="code" data-label="Code">${l.code||'—'}</td>
-      <td class="qty" data-label="Qty">${l.qty}</td>
-      <td data-label="By">${l.by}</td>
-      <td data-label="Tracker">${TRACKER_LABEL[l.tracker]}</td></tr>`).join('');
-  return `<h1>Transaction log</h1><div class="sub">${state.log.length} movements this session (written to SharePoint in v2)</div>
-    <table><thead><tr><th>Item</th><th>Dir</th><th>When</th><th>Code</th><th class="qty">Qty</th><th>By</th><th>Tracker</th></tr></thead>
-    <tbody>${rows||'<tr><td colspan="7" style="color:var(--ink-soft)">No movements yet — scan something to start.</td></tr>'}</tbody></table>`;
+      <td class="qty" data-label="Qty">${l.qty||'—'}</td>
+      <td data-label="By">${l.by||'—'}</td>
+      <td data-label="Tracker">${l.tracker||'—'}</td>
+      <td data-label="Details">${l.note||'—'}</td></tr>`).join('');
+  return `<h1>Activity log</h1>
+    <div class="sub">Every action across the system — stock, sterilisation, implants, requests, stocktakes. A summary email is sent automatically at midnight each night.</div>
+    ${can('reports')?`
+    <div class="toolrow" style="align-items:center">
+      <span style="font-size:13px;color:var(--ink-soft)">Report:</span>
+      <select id="txRange" onchange="$('#txCustom').style.display=this.value==='custom'?'flex':'none'">
+        <option value="day">Today</option><option value="week">This week</option>
+        <option value="month" selected>This month</option><option value="custom">Custom dates</option>
+      </select>
+      <span id="txCustom" style="display:none;gap:6px;align-items:center">
+        <input id="txFrom" type="date" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+        <span>to</span>
+        <input id="txTo" type="date" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+      </span>
+      <button class="btn primary" onclick="txReportPDF()">Download PDF</button>
+    </div>`:''}
+    <table><thead><tr><th>Item</th><th>Activity</th><th>When</th><th>Code</th><th class="qty">Qty</th><th>By</th><th>Tracker</th><th>Details</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="8" style="color:var(--ink-soft)">No activity yet.</td></tr>'}</tbody></table>`;
+}
+
+function resolveRange(prefix){
+  const range = $('#'+prefix+'Range').value;
+  const today = new Date(); today.setHours(0,0,0,0);
+  let from, to, label;
+  if(range==='day'){ from=new Date(today); to=new Date(today); label='Today '+today.toLocaleDateString('en-GB'); }
+  else if(range==='week'){
+    from=new Date(today); from.setDate(from.getDate()-((from.getDay()+6)%7));
+    to=new Date(from); to.setDate(to.getDate()+6);
+    label=from.toLocaleDateString('en-GB')+' - '+to.toLocaleDateString('en-GB');
+  } else if(range==='month'){
+    from=new Date(today.getFullYear(),today.getMonth(),1);
+    to=new Date(today.getFullYear(),today.getMonth()+1,0);
+    label=from.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  } else {
+    if(!$('#'+prefix+'From').value || !$('#'+prefix+'To').value){ toast('Pick both custom dates'); return null; }
+    from=new Date($('#'+prefix+'From').value); to=new Date($('#'+prefix+'To').value);
+    label=from.toLocaleDateString('en-GB')+' - '+to.toLocaleDateString('en-GB');
+  }
+  to.setHours(23,59,59);
+  return {from, to, label};
+}
+
+async function txReportPDF(){
+  const r = resolveRange('tx');
+  if(!r) return;
+  let rows;
+  if(LIVE){
+    try{
+      const data = await api({action:'getTransactions', from:r.from.toISOString(), to:r.to.toISOString()});
+      rows = data.transactions.map(t=>({ts:t.Timestamp,
+        activity:t.Activity||(t.Direction==='in'?'Stock in':t.Direction==='out'?'Stock out':''),
+        tracker:t.Tracker||'', name:t.Name||'', code:t.Code||'', qty:t.Qty||'',
+        by:t.By||'', note:t.Note||''}));
+    }catch(err){ toast(err.message); return; }
+  } else {
+    rows = state.log.filter(l=>{ const d=l.ts?new Date(l.ts):null; return d&&d>=r.from&&d<=r.to; });
+  }
+  if(!rows.length){ toast('No activity in that period'); return; }
+  rows.sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:'landscape', unit:'mm', format:'a4'});
+  const W = doc.internal.pageSize.getWidth();
+  try{
+    const blob = await fetch('logo.png').then(x=>x.blob());
+    const dataUrl = await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(blob);});
+    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.src=dataUrl;});
+    doc.addImage(dataUrl,'PNG',10,8,14*(img.width/img.height),14);
+  }catch(e){}
+  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(43,97,104);
+  doc.text('Activity Log Report', W-10, 13, {align:'right'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,90,90);
+  doc.text(r.label + '  ·  ' + rows.length + ' event(s)  ·  Printed ' +
+    new Date().toLocaleString('en-GB') + (myName?' by '+myName:''), W-10, 18.5, {align:'right'});
+  doc.setDrawColor(176,138,62); doc.setLineWidth(0.8); doc.line(10, 22, W-10, 22);
+
+  doc.autoTable({
+    startY: 25, margin:{left:10,right:10},
+    head: [['Date','Time','Activity','Tracker','Item','Code','Qty','By','Details']],
+    body: rows.map(l=>{ const d=new Date(l.ts); return [
+      d.toLocaleDateString('en-GB'), d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),
+      l.activity, l.tracker, l.name, l.code, l.qty, l.by, l.note ];}),
+    theme:'grid',
+    styles:{font:'helvetica',fontSize:7.5,cellPadding:1.6,lineColor:[185,201,197],lineWidth:0.15,
+            textColor:[23,37,31],overflow:'linebreak',valign:'middle'},
+    headStyles:{fillColor:[43,97,104],textColor:255,fontSize:7.5,fontStyle:'bold'},
+    alternateRowStyles:{fillColor:[242,247,246]},
+    columnStyles:{0:{cellWidth:18},1:{cellWidth:12},2:{cellWidth:28},3:{cellWidth:20},
+      4:{cellWidth:52},5:{cellWidth:24},6:{cellWidth:10,halign:'center'},7:{cellWidth:22}},
+    didDrawPage: d => {
+      doc.setFontSize(7.5); doc.setTextColor(140,140,140);
+      doc.text('Bollin Clinic Stock Manager — Activity ' + r.label, 10, doc.internal.pageSize.getHeight()-6);
+      doc.text('Page ' + d.pageNumber, W-10, doc.internal.pageSize.getHeight()-6, {align:'right'});
+    }
+  });
+  doc.save('Activity_Report_' + r.label.replace(/[^0-9A-Za-z]+/g,'_') + '.pdf');
+  toast('PDF downloaded');
 }
 
 function requestsView(){
@@ -1594,6 +1695,7 @@ function stocktakeView(){
   const all = state.items.filter(i=>i.tracker===stk.tracker);
   const stores = [...new Set(all.map(i=>i.loc).filter(Boolean))].sort();
   const items = stkItems();
+  const showCost = can('values');
   const rows = items.map(it=>{
     const k = stkKey(it);
     const counted = k in stk.counts ? stk.counts[k] : '';
@@ -1601,6 +1703,7 @@ function stocktakeView(){
     const vBadge = v===null ? '' :
       v===0 ? '<span class="badge b-ok">Match</span>' :
       `<span class="badge ${v<0?'b-out':'b-low'}">${v>0?'+':''}${v}</span>`;
+    const vVal = (v!==null && it.cost!=null) ? (v*it.cost) : null;
     return `<tr>
       <td data-label=""><strong>${it.name}</strong></td>
       <td class="code" data-label="Code">${it.code||'—'}</td>
@@ -1610,6 +1713,8 @@ function stocktakeView(){
           style="width:90px;padding:8px;border:1px solid var(--line);border-radius:8px;font-family:var(--mono)"
           onchange="setCount('${k.replace(/'/g,"\\'")}',this.value)"></td>
       <td data-label="Variance">${vBadge}</td>
+      ${showCost?`<td class="qty" data-label="Unit cost">${it.cost!=null?'£'+it.cost.toFixed(2):'—'}</td>
+      <td class="qty" data-label="Variance £" style="${vVal&&vVal<0?'color:var(--red)':''}">${vVal!=null?(vVal<0?'−':'+')+'£'+Math.abs(vVal).toFixed(2):'—'}</td>`:''}
     </tr>`;
   }).join('');
 
@@ -1636,10 +1741,11 @@ function stocktakeView(){
         <input type="checkbox" ${stk.apply?'checked':''} onchange="stk.apply=this.checked">
         Adjust stock to counted values on save
       </label>
+      ${can('reports')?`<button class="btn" onclick="stkReportPDF()">Download PDF report</button>`:''}
       <button class="btn primary" onclick="saveStocktake()">Save ${stk.type} check</button>
     </div>
     ${items.length? `<table><thead><tr><th>Item</th><th>Code</th><th>Location</th>
-      <th class="qty">Expected</th><th>Counted</th><th>Variance</th></tr></thead><tbody>${rows}</tbody></table>`
+      <th class="qty">Expected</th><th>Counted</th><th>Variance</th>${showCost?'<th class="qty">Unit cost</th><th class="qty">Variance £</th>':''}</tr></thead><tbody>${rows}</tbody></table>`
       : '<div class="note">No items in this selection.</div>'}`;
 }
 
@@ -1668,6 +1774,73 @@ async function saveStocktake(){
       loadAll();
     }
   }
+}
+
+async function stkReportPDF(){
+  const items = stkItems().filter(i => stkKey(i) in stk.counts);
+  if(!items.length){ toast('Enter counts first, then download the report'); return; }
+  const fmtC = n => n==null?'—':'£'+Number(n).toFixed(2);
+  let totValue=0, totVar=0, costed=0;
+  const body = items.map(i=>{
+    const counted = stk.counts[stkKey(i)];
+    const v = counted - i.qty;
+    const val = i.cost!=null ? counted*i.cost : null;
+    const vVal = i.cost!=null ? v*i.cost : null;
+    if(val!=null){ totValue+=val; costed++; }
+    if(vVal!=null) totVar+=vVal;
+    return [i.name, i.code||'', i.loc||'', i.qty, counted, (v>0?'+':'')+v,
+            fmtC(i.cost), val!=null?fmtC(val):'—', vVal!=null?(vVal<0?'−':'+')+'£'+Math.abs(vVal).toFixed(2):'—'];
+  });
+  const variances = items.filter(i=>stk.counts[stkKey(i)]!==i.qty).length;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:'landscape', unit:'mm', format:'a4'});
+  const W = doc.internal.pageSize.getWidth();
+  try{
+    const blob = await fetch('logo.png').then(x=>x.blob());
+    const dataUrl = await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(blob);});
+    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.src=dataUrl;});
+    doc.addImage(dataUrl,'PNG',10,8,14*(img.width/img.height),14);
+  }catch(e){}
+  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(43,97,104);
+  doc.text(stk.type + ' Stocktake Report', W-10, 13, {align:'right'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,90,90);
+  doc.text(TRACKER_LABEL[stk.tracker] + (stk.store?' · '+stk.store:' · all stores') +
+    '  ·  ' + items.length + ' item(s) counted, ' + variances + ' variance(s)' +
+    '  ·  ' + new Date().toLocaleString('en-GB') + (myName?' by '+myName:''), W-10, 18.5, {align:'right'});
+  doc.setDrawColor(176,138,62); doc.setLineWidth(0.8); doc.line(10, 22, W-10, 22);
+
+  doc.autoTable({
+    startY: 25, margin:{left:10,right:10},
+    head: [['Item','Code','Location','Expected','Counted','Variance','Unit Cost','Counted Value','Variance £']],
+    body,
+    foot: [[{content:'Totals ('+costed+' of '+items.length+' items costed)', colSpan:7,
+             styles:{halign:'right',fontStyle:'bold'}},
+            {content:'£'+totValue.toFixed(2), styles:{fontStyle:'bold'}},
+            {content:(totVar<0?'−':'+')+'£'+Math.abs(totVar).toFixed(2), styles:{fontStyle:'bold'}}]],
+    theme:'grid',
+    styles:{font:'helvetica',fontSize:8,cellPadding:1.8,lineColor:[185,201,197],lineWidth:0.15,
+            textColor:[23,37,31],overflow:'linebreak',valign:'middle'},
+    headStyles:{fillColor:[43,97,104],textColor:255,fontSize:8,fontStyle:'bold'},
+    footStyles:{fillColor:[246,239,223],textColor:[23,37,31]},
+    alternateRowStyles:{fillColor:[242,247,246]},
+    columnStyles:{0:{cellWidth:70},1:{cellWidth:26},2:{cellWidth:30},
+      3:{cellWidth:20,halign:'center'},4:{cellWidth:20,halign:'center'},5:{cellWidth:20,halign:'center'},
+      6:{cellWidth:22,halign:'right'},7:{cellWidth:28,halign:'right'},8:{cellWidth:24,halign:'right'}},
+    didParseCell: d => {
+      if(d.section==='body' && d.column.index===5 && d.cell.raw && d.cell.raw!=='0' && d.cell.raw!==0){
+        d.cell.styles.fontStyle='bold';
+        d.cell.styles.textColor = String(d.cell.raw).startsWith('-')?[166,27,27]:[122,74,0];
+      }
+    },
+    didDrawPage: d => {
+      doc.setFontSize(7.5); doc.setTextColor(140,140,140);
+      doc.text('Bollin Clinic Stock Manager — ' + stk.type + ' stocktake', 10, doc.internal.pageSize.getHeight()-6);
+      doc.text('Page ' + d.pageNumber, W-10, doc.internal.pageSize.getHeight()-6, {align:'right'});
+    }
+  });
+  doc.save(stk.type.replace(/[^A-Za-z]/g,'')+'_Stocktake_'+new Date().toISOString().slice(0,10)+'.pdf');
+  toast('Stocktake PDF downloaded');
 }
 
 /* ---------------- add / edit item ---------------- */
@@ -1759,8 +1932,10 @@ function genCode(tracker){
 
 const lbl = {tracker:'meds', missingOnly:true, format:'barcode'};
 function lblItems(){
+  const q = (window._lq||'').toLowerCase();
   return state.items.filter(i => i.tracker===lbl.tracker &&
-    (!lbl.missingOnly || !i.barcode));
+    (!lbl.missingOnly || !i.barcode) &&
+    (!q || i.name.toLowerCase().includes(q) || (i.code||'').toLowerCase().includes(q)));
 }
 function labelsView(){
   const trackers = ['consumables','meds','garments','instruments','linen'];
@@ -1770,7 +1945,10 @@ function labelsView(){
       <td data-label=""><strong>${it.name}</strong></td>
       <td class="code" data-label="Code">${it.code||'—'}</td>
       <td class="code" data-label="Barcode">${it.barcode||'<span style="color:var(--amber)">none</span>'}</td>
-      <td data-label="Location">${it.loc||'—'}</td></tr>`).join('');
+      <td data-label="Location">${it.loc||'—'}</td>
+      <td class="rowbtns" data-label="">
+        <button onclick="printSingleLabel(${state.items.indexOf(it)},'barcode')">Barcode</button>
+        <button onclick="printSingleLabel(${state.items.indexOf(it)},'qr')">QR</button></td></tr>`).join('');
   return `
     <h1>Labels</h1>
     <div class="sub">Generate Bollin codes for items without a barcode, then print labels to stick on shelves, boxes or bags.
@@ -1787,6 +1965,8 @@ function labelsView(){
         <option value="barcode" ${lbl.format==='barcode'?'selected':''}>Barcode (Code 128)</option>
         <option value="qr" ${lbl.format==='qr'?'selected':''}>QR code</option>
       </select>
+      <input type="search" placeholder="Search item…" value="${window._lq||''}"
+             oninput="window._lq=this.value;render()" style="flex:1;min-width:140px">
     </div>
     <div class="toolrow">
       <button class="btn" onclick="assignCodes()">Generate codes for ${missing} item(s) without barcode</button>
@@ -1795,7 +1975,7 @@ function labelsView(){
     ${tableForLabels(rows, items.length)}`;
 }
 function tableForLabels(rows, n){
-  return `<table><thead><tr><th>Item</th><th>Code</th><th>Barcode</th><th>Location</th></tr></thead>
+  return `<table><thead><tr><th>Item</th><th>Code</th><th>Barcode</th><th>Location</th><th>Print single</th></tr></thead>
     <tbody>${rows||'<tr><td colspan="4" style="color:var(--ink-soft)">Nothing here — every item in this view has a barcode. Switch to "All items" to reprint labels.</td></tr>'}</tbody></table>
     ${n>400?'<div class="sub">Showing first 400.</div>':''}`;
 }
@@ -1816,6 +1996,42 @@ async function assignCodes(){
     catch(err){ toast('Not saved to sheet — '+err.message); }
   }
 }
+function printSingleLabel(ix, format){
+  const it = state.items[ix];
+  if(!it) return;
+  let code = it.barcode || it.code;
+  if(!code){
+    if(!can('labels')){ toast('This item has no barcode yet — ask an admin to generate one'); return; }
+    code = genCode(it.tracker);
+    it.barcode = code;
+    state.barcodeLinks[code] = ix;
+    if(LIVE) api({action:'setBarcodes', entries:[{tracker:TRACKER_TAB[it.tracker],
+      code:it.code||it.name, barcode:code}]}).catch(e=>toast('Code not saved — '+e.message));
+    toast('Generated code '+code);
+  }
+  const area = $('#printArea');
+  area.innerHTML = `
+    <div style="display:flex;justify-content:center;padding-top:20mm">
+      <div class="label" style="width:80mm;padding:5mm;border:1.5px solid #999;border-radius:3mm">
+        <div class="ln" style="font-size:13pt;max-height:none;margin-bottom:2mm">${it.name}</div>
+        ${format==='qr' ? '<div class="qr" id="sqr" style="width:26mm;height:26mm"></div>'
+                        : '<svg id="sbc" style="height:18mm;max-width:70mm"></svg>'}
+        <div class="lc" style="font-size:11pt;letter-spacing:1px;margin-top:1.5mm">${code}</div>
+      </div>
+    </div>`;
+  try{
+    if(format==='qr'){
+      new QRCode(document.getElementById('sqr'), {text:String(code), width:98, height:98,
+        correctLevel:QRCode.CorrectLevel.M});
+      const q = document.getElementById('sqr');
+      setTimeout(()=>{ const c=q.querySelector('canvas,img'); if(c){c.style.width='26mm';c.style.height='26mm';} },50);
+    } else {
+      JsBarcode('#sbc', String(code), {format:'CODE128', displayValue:false, margin:0, height:60});
+    }
+  }catch(e){ toast('Could not draw the code'); return; }
+  setTimeout(()=>window.print(), 300);
+}
+
 function printLabels(){
   const items = lblItems().filter(i=>i.barcode);
   if(!items.length){ toast('No items with barcodes in this list'); return; }
@@ -1909,8 +2125,10 @@ async function loadAll(){
       (data.items[tab]||[]).forEach(r => fresh.push(mapItem(tab, r)));
     state.items = fresh;   // swap in only after successful parse
     state.log = data.transactions.map(t=>({ts:t.Timestamp, dir:t.Direction,
-      name:t.Name, code:t.Code, qty:t.Qty, by:t.By, tracker:String(t.Tracker||'').toLowerCase(),
-      batch:t.Batch, expiry:t.Expiry}));
+      name:t.Name, code:t.Code, qty:t.Qty, by:t.By, tracker:String(t.Tracker||''),
+      batch:t.Batch, expiry:t.Expiry,
+      activity:t.Activity||(t.Direction==='in'?'Stock in':t.Direction==='out'?'Stock out':''),
+      note:t.Note||''}));
     state.requests = data.requests.map(r=>({_row:r._row, ts:r.Timestamp, by:r.By,
       item:r.Item, qty:r.Qty, size:r.Size||'', status:r.Status||'Requested',
       handledBy:r.HandledBy||'', responded:r.DateResponded||null, remarks:r.Remarks||''}));
@@ -1964,9 +2182,9 @@ try { session = JSON.parse(localStorage.getItem('bollin_session')||'null'); } ca
 if(session) myName = session.displayName || '';
 
 const PERMS = {
-  admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1},
-  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1},
-  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0, instr:0}
+  admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1},
+  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1},
+  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0, instr:0, reports:0}
 };
 function role(){ return LIVE ? (session ? session.role : null) : 'admin'; }
 function can(p){ const r = role(); return !!(r && PERMS[r] && PERMS[r][p]); }

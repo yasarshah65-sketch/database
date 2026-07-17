@@ -24,10 +24,12 @@ function doGet(e) {
 // action -> minimum role. Roles: common < staff < admin
 const ACTION_ROLE = {
   getAll:'common', move:'common', link:'common', useLog:'common', request:'common',
+  getTransactions:'staff',
   changePassword:'common',
   stocktake:'staff', respond:'staff', ack:'staff',
   implantAdd:'staff', implantUpdate:'staff',
   dispatchAssign:'staff', dispatchReceive:'staff', dispatchAdd:'staff', dispatchReturn:'staff',
+  instrumentAdd:'staff',
   addItem:'admin', updateItem:'admin', setBarcodes:'admin'
 };
 const ROLE_RANK = { common: 0, staff: 1, admin: 2 };
@@ -47,8 +49,10 @@ function doPost(e) {
     if (ROLE_RANK[session.role] < ROLE_RANK[need])
       return json_({ ok: false, error: 'Your access level (' + session.role + ') cannot do this' });
     req._session = session;
+    CURRENT_USER = session.name || session.u;
     switch (req.action) {
       case 'getAll':    return json_(getAll_(req._session));
+      case 'getTransactions': return json_(getTransactions_(req));
       case 'changePassword': return json_(changePassword_(req));
       case 'move':      return json_(move_(req));
       case 'link':      return json_(link_(req));
@@ -64,6 +68,7 @@ function doPost(e) {
       case 'useLog':         return json_(useLog_(req));
       case 'dispatchAssign': return json_(dispatchAssign_(req));
       case 'dispatchReceive':return json_(dispatchReceive_(req));
+      case 'instrumentAdd':  return json_(instrumentAdd_(req));
       case 'ack':       return json_(ackAlert_(req));
       case 'stocktake': return json_(stocktake_(req));
       default:          return json_({ ok: false, error: 'Unknown action' });
@@ -83,6 +88,33 @@ function json_(obj) {
 /* ================================ helpers ================================= */
 
 function ss_() { return SpreadsheetApp.getActiveSpreadsheet(); }
+
+let CURRENT_USER = '';
+
+function logAct_(activity, o) {
+  // writes any event to the Transactions tab, mapped by header name
+  o = o || {};
+  try {
+    const sh = ss_().getSheetByName('Transactions');
+    const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+    const map = { Timestamp: new Date(), Direction: o.dir || '', Tracker: o.tracker || '',
+      Code: o.code || '', Name: o.name || '', Qty: (o.qty === 0 || o.qty) ? o.qty : '',
+      By: o.by || CURRENT_USER || '', Batch: o.batch || '', Expiry: o.expiry || '',
+      Note: o.note || '', Activity: activity };
+    sh.appendRow(head.map(h => map[h] !== undefined ? map[h] : ''));
+  } catch (e) { /* logging must never break the action itself */ }
+}
+
+function getTransactions_(q) {
+  const from = q.from ? new Date(q.from) : new Date(0);
+  const to = q.to ? new Date(q.to) : new Date();
+  to.setHours(23, 59, 59);
+  const rows = readTab_('Transactions').filter(t => {
+    const d = t.Timestamp ? new Date(t.Timestamp) : null;
+    return d && d >= from && d <= to;
+  });
+  return { ok: true, transactions: rows.slice(0, 3000) };
+}
 
 function readTab_(name) {
   const sh = ss_().getSheetByName(name);
@@ -140,6 +172,8 @@ function addItem_(q) {
     ss_().getSheetByName('BarcodeLinks')
       .appendRow([q.fields.Barcode, q.tracker, q.fields.Code || q.fields.Name]);
   }
+  logAct_('Item added', {tracker: q.tracker, code: q.fields.Code || '', name: q.fields.Name,
+    qty: q.fields.Qty, note: 'New item created'});
   return { ok: true, row: sh.getLastRow() };
 }
 
@@ -232,10 +266,8 @@ function move_(q) {
   }
 
   const name = it.vals[it.head.indexOf('Name')];
-  ss_().getSheetByName('Transactions').appendRow([
-    new Date(), q.dir, q.tracker, q.code, name, qty,
-    q.by || 'Unknown', q.batch || '', q.expiry || '', q.note || ''
-  ]);
+  logAct_(q.dir === 'in' ? 'Stock in' : 'Stock out', {dir: q.dir, tracker: q.tracker,
+    code: q.code, name: name, qty: qty, by: q.by, batch: q.batch, expiry: q.expiry, note: q.note});
   return { ok: true, newQty: newQty, name: name };
 }
 
@@ -254,6 +286,7 @@ function addRequest_(q) {
     new Date(), q.by || 'Unknown', q.item,
     Math.max(1, Number(q.qty) || 1), q.size || '', 'Requested', '', '', ''
   ]);
+  logAct_('Request submitted', {tracker: 'Requests', name: q.item, qty: q.qty, by: q.by, note: q.size ? 'Size: ' + q.size : ''});
   return { ok: true };
 }
 
@@ -264,6 +297,9 @@ function respondRequest_(q) {
   sh.getRange(q.row, 7).setValue(q.by || '');
   sh.getRange(q.row, 8).setValue(new Date());
   sh.getRange(q.row, 9).setValue(q.remarks || '');
+  logAct_('Request answered', {tracker: 'Requests',
+    name: String(sh.getRange(q.row, 3).getValue() || ''), by: q.by,
+    note: 'Status: ' + q.status + (q.remarks ? ' — ' + q.remarks : '')});
   return { ok: true };
 }
 
@@ -280,6 +316,8 @@ function updateItem_(q) {
     if (h === 'Expiry' && v) v = new Date(v);
     sh.getRange(q.row, c + 1).setValue(v);
   });
+  logAct_('Item edited', {tracker: q.tracker, code: (q.fields && q.fields.Code) || '',
+    name: (q.fields && q.fields.Name) || '', note: 'Item details updated'});
   return { ok: true };
 }
 
@@ -302,6 +340,9 @@ function implantAdd_(q) {
     return v;
   });
   sh.appendRow(row);
+  logAct_('Implant ordered', {tracker: 'Implants', code: f.PATNumber || '',
+    name: (f.PatientInitials || '') + ' — ' + (f.ImplantDetails || ''), qty: f.Qty,
+    note: 'Status: ' + (f.Status || 'Pending')});
   return { ok: true, row: sh.getLastRow() };
 }
 
@@ -318,6 +359,10 @@ function implantUpdate_(q) {
     if ((h.indexOf('Date') >= 0) && v) v = new Date(v);
     sh.getRange(q.row, c + 1).setValue(v);
   });
+  const pat = sh.getRange(q.row, head.indexOf('PATNumber') + 1).getValue();
+  const ini = sh.getRange(q.row, head.indexOf('PatientInitials') + 1).getValue();
+  logAct_('Implant updated', {tracker: 'Implants', code: String(pat || ''),
+    name: String(ini || ''), note: Object.keys(q.fields || {}).map(k => k + ': ' + q.fields[k]).join(', ').slice(0, 180)});
   return { ok: true };
 }
 
@@ -349,6 +394,8 @@ function useLog_(q) {
   });
   if (!rows.length) return { ok: false, error: 'No lines' };
   d.sh.getRange(d.sh.getLastRow() + 1, 1, rows.length, d.head.length).setValues(rows);
+  (q.lines || []).forEach(l => logAct_('Instrument used', {tracker: 'Sterilisation',
+    code: l.code, name: l.name, qty: l.qty, by: q.by}));
   return { ok: true, added: rows.length };
 }
 
@@ -363,20 +410,93 @@ function dispatchAssign_(q) {
     if (q.instructions) d.sh.getRange(r, d.col('Instructions')).setValue(q.instructions);
     d.sh.getRange(r, d.col('Status')).setValue('Out');
   });
+  dispatchAssign_Register_(q.rows || []);
+  logAct_('Instruments dispatched', {tracker: 'Sterilisation', code: q.ref,
+    name: 'Dispatch ' + (q.ref || ''), qty: (q.rows || []).length, by: q.by,
+    note: (q.rows || []).length + ' line(s) sent to CSSD'});
   return { ok: true, dispatched: (q.rows || []).length };
 }
 
 function dispatchReceive_(q) {
   // q: {rows:[sheetRow,...], by}
+  // On receive: expiry = dispatch (sterilisation) date + 1 year, written to the
+  // Instruments register. Unknown codes are added to the register automatically.
   const d = dlSheet_();
   (q.rows || []).forEach(r => {
     const out = Number(d.sh.getRange(r, d.col('CountOut')).getValue()) || 0;
+    const sent = d.sh.getRange(r, d.col('DateSent')).getValue();
+    const code = String(d.sh.getRange(r, d.col('Code')).getValue() || '').trim();
+    const name = String(d.sh.getRange(r, d.col('ItemName')).getValue() || '').trim();
     d.sh.getRange(r, d.col('DateReturned')).setValue(new Date());
     d.sh.getRange(r, d.col('ReturnedBy')).setValue(q.by || '');
     d.sh.getRange(r, d.col('CountIn')).setValue(out);
     d.sh.getRange(r, d.col('Status')).setValue('Returned');
+    if (code) {
+      const base = (sent && sent instanceof Date) ? new Date(sent) : new Date();
+      const expiry = new Date(base); expiry.setFullYear(expiry.getFullYear() + 1);
+      upsertInstrument_(code, name, { Expiry: expiry, Status: 'At Bollin' });
+    }
   });
+  logAct_('Instruments received', {tracker: 'Sterilisation',
+    name: 'CSSD return', qty: (q.rows || []).length, by: q.by,
+    note: (q.rows || []).length + ' line(s) received back'});
   return { ok: true, received: (q.rows || []).length };
+}
+
+function dispatchAssign_Register_(rows) {
+  // mark register items as out when dispatched
+  const d = dlSheet_();
+  rows.forEach(r => {
+    const code = String(d.sh.getRange(r, d.col('Code')).getValue() || '').trim();
+    if (code) { try { upsertInstrument_(code, '', { Status: 'At CSSD' }); } catch (e) {} }
+  });
+}
+
+function upsertInstrument_(code, name, fields) {
+  const sh = ss_().getSheetByName('Instruments');
+  if (!sh) return;
+  const vals = sh.getDataRange().getValues();
+  const head = vals[0].map(String);
+  const cCode = head.indexOf('Code'), cBar = head.indexOf('Barcode');
+  let row = -1;
+  for (let r = 1; r < vals.length; r++) {
+    const vc = String(vals[r][cCode] || '').trim();
+    const vb = cBar >= 0 ? String(vals[r][cBar] || '').trim() : '';
+    if ((vc && vc === code) || (vb && vb === code)) { row = r + 1; break; }
+  }
+  if (row < 0) {                                   // auto-register a new instrument
+    const newRow = head.map(h =>
+      h === 'Code' ? code : h === 'Barcode' ? code :
+      h === 'Name' ? (name || code) :
+      h === 'Category' ? (String(name).toLowerCase().indexOf('tray') >= 0 ? 'Tray' : 'Instrument') : '');
+    sh.appendRow(newRow);
+    row = sh.getLastRow();
+  }
+  Object.keys(fields || {}).forEach(h => {
+    const c2 = head.indexOf(h);
+    if (c2 >= 0) sh.getRange(row, c2 + 1).setValue(fields[h]);
+  });
+}
+
+function instrumentAdd_(q) {
+  // q: {fields:{Code, Barcode, Name, Category, Description, QtyInTray, Expiry, Notes, Status}}
+  const sh = ss_().getSheetByName('Instruments');
+  if (!sh) return { ok: false, error: 'Instruments tab missing' };
+  const f = q.fields || {};
+  if (!f.Name) return { ok: false, error: 'Name required' };
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const row = head.map(h => {
+    let v = f[h];
+    if (v === undefined || v === null) return '';
+    if (h === 'Expiry' && v) return new Date(v);
+    return v;
+  });
+  sh.appendRow(row);
+  if (f.Barcode) ss_().getSheetByName('BarcodeLinks')
+    .appendRow([f.Barcode, 'Instruments', f.Code || f.Name]);
+  logAct_('Instrument registered', {tracker: 'Sterilisation', code: f.Code,
+    name: f.Name, qty: f.QtyInTray});
+  return { ok: true, row: sh.getLastRow() };
 }
 
 function dispatchAdd_(q) {
@@ -448,6 +568,19 @@ function migrate() {
       }
     });
   }
+  // 1b2. Instruments register: ensure Expiry and Status columns exist
+  const inst = ss.getSheetByName('Instruments');
+  if (inst) {
+    const haveI = inst.getRange(1, 1, 1, Math.max(inst.getLastColumn(), 1)).getValues()[0].map(String);
+    ['Expiry', 'Status'].forEach(hd => {
+      if (haveI.indexOf(hd) < 0) {
+        const c4 = inst.getLastColumn() + 1;
+        inst.getRange(1, c4).setValue(hd)
+          .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+        haveI.push(hd);
+      }
+    });
+  }
   // 1c. Users tab
   if (!ss.getSheetByName('Users')) {
     const us = ss.insertSheet('Users');
@@ -463,6 +596,23 @@ function migrate() {
       'Roles: admin = everything · staff = all except adding/editing items · common = scan in/out + log used only, no values. ' +
       'Type an initial password in the Password column — it is replaced by a secure hash the first time the person signs in. Active: yes/no.')
       .setFontStyle('italic').setFontSize(9);
+  }
+  // 1e. Transactions tab: ensure Activity column
+  const tx = ss.getSheetByName('Transactions');
+  if (tx) {
+    const haveT = tx.getRange(1, 1, 1, Math.max(tx.getLastColumn(), 1)).getValues()[0].map(String);
+    if (haveT.indexOf('Activity') < 0) {
+      tx.getRange(1, tx.getLastColumn() + 1).setValue('Activity')
+        .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+    }
+  }
+  // 1f. Settings: activity_email row
+  const st = ss.getSheetByName('Settings');
+  if (st) {
+    const keys = st.getRange(1, 1, Math.max(st.getLastRow(), 1), 1).getValues().map(r => String(r[0]));
+    if (keys.indexOf('activity_email') < 0) {
+      st.appendRow(['activity_email', '', 'Nightly midnight activity-log email recipient (falls back to alert_email if empty)']);
+    }
   }
   // 2. Requests tab: old schema (Tracker/Code, HandledAt) -> new (Size, DateResponded, Remarks)
   const sh = ss.getSheetByName('Requests');
@@ -526,6 +676,10 @@ function stocktake_(q) {
       } catch (err) { /* item deleted mid-count — recorded but not applied */ }
     }
   });
+  logAct_('Stocktake saved', {tracker: (q.entries && q.entries[0] ? q.entries[0].tracker : ''),
+    name: (q.checkType || 'Month-end') + ' check', qty: (q.entries || []).length, by: q.by,
+    note: (q.entries || []).filter(e => Number(e.counted) !== Number(e.expected)).length + ' variance(s)' +
+          (q.apply ? ', stock adjusted' : '')});
   return { ok: true, saved: (q.entries || []).length };
 }
 
@@ -615,6 +769,50 @@ function setupTriggers() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('dailyStockCheck').timeBased().everyDays(1).atHour(8).create();
   ScriptApp.newTrigger('escalationCheck').timeBased().everyHours(4).create();
+  ScriptApp.newTrigger('dailyActivityEmail').timeBased().everyDays(1).atHour(0).create();
+}
+
+function dailyActivityEmail() {
+  const email = setting_('activity_email', setting_('alert_email', ''));
+  if (!email) return;
+  const appName = setting_('app_name', 'Bollin Clinic Inventory');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const yday = new Date(today); yday.setDate(yday.getDate() - 1);
+  const rows = readTab_('Transactions').filter(t => {
+    const d = t.Timestamp ? new Date(t.Timestamp) : null;
+    return d && d >= yday && d < today;
+  });
+  const dayLabel = Utilities.formatDate(yday, Session.getScriptTimeZone(), 'EEEE d MMMM yyyy');
+  if (!rows.length) {
+    MailApp.sendEmail({ to: email, subject: appName + ' — activity log ' + dayLabel,
+      htmlBody: '<p>No activity was recorded on ' + dayLabel + '.</p>' });
+    return;
+  }
+  const cell = 'border:1px solid #C9D6D2;padding:4px 7px;font-size:12px;';
+  let body = '<h3 style="color:#2B6168">' + appName + ' — activity for ' + dayLabel + '</h3>' +
+    '<p>' + rows.length + ' event(s)</p>' +
+    '<table style="border-collapse:collapse"><tr>' +
+    ['Time', 'Activity', 'Tracker', 'Item', 'Code', 'Qty', 'By', 'Details'].map(x =>
+      '<th style="' + cell + 'background:#2B6168;color:#fff">' + x + '</th>').join('') + '</tr>';
+  rows.forEach(t => {
+    const act = t.Activity || (t.Direction === 'in' ? 'Stock in' : t.Direction === 'out' ? 'Stock out' : '');
+    body += '<tr>' + [
+      Utilities.formatDate(new Date(t.Timestamp), Session.getScriptTimeZone(), 'HH:mm'),
+      act, t.Tracker || '', t.Name || '', t.Code || '', t.Qty || '', t.By || '', t.Note || ''
+    ].map(x => '<td style="' + cell + '">' + x + '</td>').join('') + '</tr>';
+  });
+  body += '</table>';
+  MailApp.sendEmail({ to: email, subject: appName + ' — activity log ' + dayLabel +
+    ' (' + rows.length + ' events)', htmlBody: body });
+}
+
+/** Run from the editor to wipe ONLY the implant test data (keeps the header row). */
+function resetImplantsTestData() {
+  const sh = ss_().getSheetByName('Implants');
+  if (!sh) return 'No Implants tab';
+  const n = sh.getLastRow();
+  if (n > 1) sh.getRange(2, 1, n - 1, sh.getLastColumn()).clearContent();
+  return 'Cleared ' + Math.max(0, n - 1) + ' implant row(s)';
 }
 
 function dailyStockCheck() {
