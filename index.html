@@ -262,6 +262,10 @@
     <div class="navsec">Checks</div>
     <a href="#stocktake" data-view="stocktake">Stocktake</a>
     <a href="#labels" data-view="labels">Labels</a>
+    <a href="#values" data-view="values">Stock value</a>
+    <div class="navsec">Admin</div>
+    <a href="#stores" data-view="stores">Stores & transfers</a>
+    <a href="#obsolete" data-view="obsolete">Obsolete stock</a>
   </nav>
 
   <main id="main"></main>
@@ -680,14 +684,15 @@ function tableFor(items, opts={}){
       <td class="qty" data-label="Qty">${it.tracker==='instruments'?'—':it.qty+' '+it.unit}</td>
       <td data-label="Status"><span class="badge ${s.c}">${s.t}</span></td>
       <td class="rowbtns" data-label=""><button onclick='openMove(state.items[${state.items.indexOf(it)}])'>Move</button>
-        ${can('edit')?`<button onclick='openEdit(${state.items.indexOf(it)})'>Edit</button>`:''}</td>
+        ${can('edit')?`<button onclick='openEdit(${state.items.indexOf(it)})'>Edit</button>`:''}
+        ${can('obsolete')&&it.tracker!=='instruments'?`<button onclick='markObsolete(${state.items.indexOf(it)})' title="Move to obsolete stock" style="color:var(--ink-soft)">Obsolete</button>`:''}</td>
     </tr>`;
   }).join('');
   return `<table>${head}<tbody>${rows||'<tr><td colspan="8" style="color:var(--ink-soft)">Nothing matches.</td></tr>'}</tbody></table>`;
 }
 
 function trackerView(key){
-  const all = state.items.filter(i=>i.tracker===key);
+  const all = state.items.filter(i=>i.tracker===key && !i.obsolete);
   const stores = [...new Set(all.map(i=>i.loc).filter(Boolean))].sort();
   const cats   = [...new Set(all.map(i=>i.cat).filter(Boolean))].sort();
   const q  = (window._q ||'').toLowerCase();
@@ -719,14 +724,14 @@ function refreshTrackerTable(){
   const key = currentView;
   const q  = (window._q ||'').toLowerCase();
   const st = window._store||'', ct = window._cat||'';
-  const items = state.items.filter(i => i.tracker===key &&
+  const items = state.items.filter(i => i.tracker===key && !i.obsolete &&
       (!q || i.name.toLowerCase().includes(q) || (i.code||'').toLowerCase().includes(q)) &&
       (!st || i.loc===st) && (!ct || i.cat===ct));
   wrap.innerHTML = tableFor(items,{expiry: key!=='garments'});
 }
 
 function dashboardView(){
-  const stock = state.items.filter(i=>i.tracker!=='instruments');
+  const stock = state.items.filter(i=>i.tracker!=='instruments' && !i.obsolete);
   const low = stock.filter(i=>i.qty>0 && i.qty<=i.reorder);
   const out = stock.filter(i=>i.qty===0);
   const exp = stock.filter(i=>{const d=daysTo(i.expiry);return d!=null && d<=90;});
@@ -743,7 +748,7 @@ function dashboardView(){
       <div class="tile exp"  onclick="nav('dash-exp')"><div class="n">${exp.length}</div><div class="l">Expiring ≤ 90 days</div></div>
       <div class="tile"      onclick="nav('instruments')"><div class="n">${away.length}</div><div class="l">Lines out at CSSD</div></div>
       <div class="tile warn" onclick="sterTab='onhand';nav('instruments')"><div class="n">${instExpiring().length}</div><div class="l">Instruments expiring ≤ 60 days</div></div>
-      ${can('values')?`<div class="tile"><div class="n">£${val.toFixed(0)}</div><div class="l">Stock value (${costed} of ${stock.length} items costed)</div></div>`:''}
+      ${can('values')?`<div class="tile" onclick="nav('values')"><div class="n">£${val.toFixed(0)}</div><div class="l">Stock value (${costed} of ${stock.length} items costed)</div></div>`:''}
     </div>
     <h1 style="font-size:16px">Needs attention</h1>
     <div class="sub">Low, out of stock and short-dated items across every tracker</div>
@@ -2053,6 +2058,220 @@ function printLabels(){
   setTimeout(()=>window.print(), 300);
 }
 
+/* ---------------- stock value explorer ---------------- */
+window._vSort = 'valueDesc';
+function valuesView(){
+  const trackers = ['','consumables','meds','garments','linen'];
+  const tf = window._vTracker||'';
+  let items = state.items.filter(i=>i.tracker!=='instruments' && !i.obsolete &&
+    (!tf || i.tracker===tf));
+  const q = (window._vq||'').toLowerCase();
+  if(q) items = items.filter(i=>i.name.toLowerCase().includes(q) || (i.supplier||'').toLowerCase().includes(q));
+  const val = i => i.cost!=null ? i.cost*i.qty : null;
+  const sorters = {
+    valueDesc:{l:'Value (high → low)', f:(a,b)=>(val(b)??-1)-(val(a)??-1)},
+    valueAsc:{l:'Value (low → high)', f:(a,b)=>(val(a)??Infinity)-(val(b)??Infinity)},
+    expiry:{l:'Expiring soon', f:(a,b)=>{const da=a.expiry?new Date(a.expiry):null,db=b.expiry?new Date(b.expiry):null;
+      if(!da&&!db)return 0; if(!da)return 1; if(!db)return -1; return da-db;}},
+    supplier:{l:'Supplier', f:(a,b)=>(a.supplier||'zzz').localeCompare(b.supplier||'zzz')},
+    qty:{l:'Quantity (high → low)', f:(a,b)=>b.qty-a.qty},
+    name:{l:'Name (A–Z)', f:(a,b)=>a.name.localeCompare(b.name)}
+  };
+  items.sort(sorters[window._vSort].f);
+  const total = items.reduce((s,i)=>s+(val(i)||0),0);
+  const costed = items.filter(i=>i.cost!=null).length;
+  const rows = items.slice(0,500).map(i=>`<tr>
+      <td data-label=""><strong>${i.name}</strong> <span class="code" style="font-family:var(--mono);font-size:11.5px">${i.code||''}</span></td>
+      <td data-label="Tracker">${TRACKER_LABEL[i.tracker]}</td>
+      <td data-label="Supplier">${i.supplier||'—'}</td>
+      <td data-label="Store">${i.loc||'—'}</td>
+      <td data-label="Expiry">${i.expiry?new Date(i.expiry).toLocaleDateString('en-GB'):'—'} ${expBadge(i)}</td>
+      <td class="qty" data-label="Qty">${i.qty} ${i.unit}</td>
+      <td class="qty" data-label="Unit cost">${i.cost!=null?'£'+i.cost.toFixed(2):'—'}</td>
+      <td class="qty" data-label="Value"><strong>${val(i)!=null?'£'+val(i).toFixed(2):'—'}</strong></td>
+    </tr>`).join('');
+  return `<h1>Stock value</h1>
+    <div class="sub">Total <strong>£${total.toFixed(2)}</strong> across ${items.length} items (${costed} costed). Sort and filter to explore.</div>
+    <div class="toolrow">
+      <select onchange="window._vTracker=this.value;render()">
+        ${trackers.map(t=>`<option value="${t}" ${t===tf?'selected':''}>${t?TRACKER_LABEL[t]:'All trackers'}</option>`).join('')}
+      </select>
+      <select onchange="window._vSort=this.value;render()">
+        ${Object.keys(sorters).map(k=>`<option value="${k}" ${k===window._vSort?'selected':''}>${sorters[k].l}</option>`).join('')}
+      </select>
+      <input type="search" placeholder="Search item or supplier…" value="${window._vq||''}"
+             oninput="window._vq=this.value;refreshValues()">
+    </div>
+    <div id="valWrap"><table><thead><tr><th>Item</th><th>Tracker</th><th>Supplier</th><th>Store</th>
+      <th>Expiry</th><th class="qty">Qty</th><th class="qty">Unit cost</th><th class="qty">Value</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="8" style="color:var(--ink-soft)">Nothing matches.</td></tr>'}</tbody></table></div>`;
+}
+function refreshValues(){
+  const el = document.getElementById('valWrap');
+  if(!el || currentView!=='values') return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = valuesView();
+  const fresh = tmp.querySelector('#valWrap');
+  if(fresh) el.innerHTML = fresh.innerHTML;
+}
+
+/* ---------------- obsolete (dead) stock — admin only ---------------- */
+async function markObsolete(ix){
+  const it = state.items[ix];
+  if(!confirm('Move "'+it.name+'" to obsolete stock? It will disappear from all lists and alerts, but stays saved and can be restored anytime.')) return;
+  it.obsolete = true; render();
+  toast('Moved to obsolete: '+it.name);
+  if(LIVE && it._row){
+    try{ await api({action:'updateItem', tracker:TRACKER_TAB[it.tracker], row:it._row,
+                    fields:{Obsolete:'yes'}}); }
+    catch(err){ it.obsolete=false; toast('Not saved — '+err.message); render(); }
+  }
+}
+async function restoreItem(ix){
+  const it = state.items[ix];
+  it.obsolete = false; render();
+  toast('Restored: '+it.name);
+  if(LIVE && it._row){
+    try{ await api({action:'updateItem', tracker:TRACKER_TAB[it.tracker], row:it._row,
+                    fields:{Obsolete:''}}); }
+    catch(err){ it.obsolete=true; toast('Not saved — '+err.message); render(); }
+  }
+}
+function obsoleteView(){
+  const items = state.items.map((it,ix)=>({it,ix})).filter(x=>x.it.obsolete);
+  const rows = items.map(({it,ix})=>`<tr>
+      <td data-label=""><strong>${it.name}</strong> <span class="code" style="font-family:var(--mono);font-size:11.5px">${it.code||''}</span></td>
+      <td data-label="Tracker">${TRACKER_LABEL[it.tracker]}</td>
+      <td data-label="Category">${it.cat||'—'}</td>
+      <td class="qty" data-label="Qty">${it.qty}</td>
+      <td class="rowbtns" data-label=""><button onclick="restoreItem(${ix})">Restore</button></td></tr>`).join('');
+  return `<h1>Obsolete stock</h1>
+    <div class="sub">Dead stock kept out of the way — no alerts, no low-stock lists, hidden from trackers. Restore anytime if needed again. Mark items obsolete from the "Obsolete" button on any tracker row.</div>
+    <table><thead><tr><th>Item</th><th>Tracker</th><th>Category</th><th class="qty">Qty</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="5" style="color:var(--ink-soft)">Nothing marked obsolete.</td></tr>'}</tbody></table>`;
+}
+
+/* ---------------- stores & transfers — admin only ---------------- */
+const selMove = new Set();
+function allStoresFor(tracker){
+  const fromItems = state.items.filter(i=>i.tracker===tracker && !i.obsolete)
+    .map(i=>i.loc).filter(Boolean);
+  const managed = (state.stores||[]).filter(s=>s.tracker===tracker).map(s=>s.store);
+  return [...new Set([...fromItems, ...managed])].sort();
+}
+function storesView(){
+  const trackers = ['consumables','meds','garments','instruments','linen'];
+  const t = window._sTracker || 'consumables';
+  const stores = allStoresFor(t);
+  const managed = (state.stores||[]).filter(s=>s.tracker===t);
+  const q = (window._sq||'').toLowerCase();
+  const cats = [...new Set(state.items.filter(i=>i.tracker===t && !i.obsolete).map(i=>i.cat).filter(Boolean))].sort();
+  const cf = window._sCat||'', sf = window._sStore||'';
+  const items = state.items.map((it,ix)=>({it,ix})).filter(x=>x.it.tracker===t && !x.it.obsolete &&
+    (!q || x.it.name.toLowerCase().includes(q) || (x.it.code||'').toLowerCase().includes(q)) &&
+    (!cf || x.it.cat===cf) && (!sf || x.it.loc===sf));
+  const allSel = items.length && items.every(x=>selMove.has(x.ix));
+  const rows = items.slice(0,400).map(({it,ix})=>`<tr>
+      <td data-label="" style="display:flex;gap:10px;align-items:center">
+        <input type="checkbox" ${selMove.has(ix)?'checked':''} onchange="toggleSel(selMove,${ix})" style="width:18px;height:18px">
+        <span><strong>${it.name}</strong> <span class="code" style="font-family:var(--mono);font-size:11.5px">${it.code||''}</span></span></td>
+      <td data-label="Category">${it.cat||'—'}</td>
+      <td class="qty" data-label="Qty">${it.qty}</td>
+      <td data-label="Current store">${it.loc||'—'}</td></tr>`).join('');
+  const storeRows = stores.map(s=>{
+    const cnt = state.items.filter(i=>i.tracker===t && !i.obsolete && i.loc===s).length;
+    const m = managed.find(x=>x.store===s);
+    return `<span style="display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:13px;background:var(--card)">
+      ${s} <span style="color:var(--ink-soft)">(${cnt})</span>
+      ${m&&cnt===0?`<a href="#" onclick="removeStore(${m._row});return false" style="color:var(--red);font-weight:700" title="Remove empty store">×</a>`:''}
+    </span>`;
+  }).join(' ');
+  return `<h1>Stores & transfers</h1>
+    <div class="sub">Add or remove stores and move stock between them. Only empty managed stores can be removed (×).</div>
+    <div class="toolrow">
+      <select onchange="window._sTracker=this.value;window._sStore='';window._sCat='';selMove.clear();render()">
+        ${trackers.map(x=>`<option value="${x}" ${x===t?'selected':''}>${TRACKER_LABEL[x]}</option>`).join('')}
+      </select>
+      <input id="newStore" type="text" placeholder="New store name…" style="padding:9px 10px;border:1px solid var(--line);border-radius:8px">
+      <button class="btn" onclick="addStore()">＋ Add store</button>
+    </div>
+    <div style="margin-bottom:16px;line-height:2.3">${storeRows||'<span style="color:var(--ink-soft)">No stores yet.</span>'}</div>
+    <h1 style="font-size:16px">Move stock between stores</h1>
+    <div class="toolrow">
+      <input type="search" placeholder="Search…" value="${window._sq||''}" oninput="window._sq=this.value;render()">
+      <select onchange="window._sCat=this.value;render()">
+        <option value="">All categories</option>
+        ${cats.map(x=>`<option ${x===cf?'selected':''}>${x}</option>`).join('')}
+      </select>
+      <select onchange="window._sStore=this.value;render()">
+        <option value="">From: all stores</option>
+        ${stores.map(x=>`<option ${x===sf?'selected':''}>${x}</option>`).join('')}
+      </select>
+    </div>
+    <div class="toolrow">
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px">
+        <input type="checkbox" ${allSel?'checked':''} onchange="selAllMove(this.checked)" style="width:18px;height:18px">
+        Tick all shown (${items.length})
+      </label>
+      <select id="moveDest" style="padding:9px 10px;border:1px solid var(--line);border-radius:8px">
+        <option value="">Move to…</option>
+        ${stores.map(x=>`<option>${x}</option>`).join('')}
+      </select>
+      <button class="btn primary" onclick="doMoveStore()">Move ${selMove.size||''} ticked item(s)</button>
+    </div>
+    <table><thead><tr><th>Item</th><th>Category</th><th class="qty">Qty</th><th>Current store</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="4" style="color:var(--ink-soft)">Nothing matches.</td></tr>'}</tbody></table>`;
+}
+function selAllMove(on){
+  selMove.clear();
+  if(on){
+    const t = window._sTracker||'consumables';
+    const q = (window._sq||'').toLowerCase(), cf = window._sCat||'', sf = window._sStore||'';
+    state.items.forEach((it,ix)=>{
+      if(it.tracker===t && !it.obsolete &&
+        (!q || it.name.toLowerCase().includes(q) || (it.code||'').toLowerCase().includes(q)) &&
+        (!cf || it.cat===cf) && (!sf || it.loc===sf)) selMove.add(ix);
+    });
+  }
+  render();
+}
+async function addStore(){
+  const name = $('#newStore').value.trim();
+  if(!name){ toast('Type a store name first'); return; }
+  const t = window._sTracker||'consumables';
+  state.stores = state.stores||[];
+  state.stores.push({_row:null, tracker:t, store:name});
+  render(); toast('Store added: '+name);
+  if(LIVE){
+    try{ await api({action:'storeAdd', tracker:t, store:name}); loadAll(); }
+    catch(err){ toast('Not saved — '+err.message); }
+  }
+}
+async function removeStore(row){
+  if(!confirm('Remove this empty store from the list?')) return;
+  state.stores = (state.stores||[]).filter(s=>s._row!==row);
+  render();
+  if(LIVE && row){
+    try{ await api({action:'storeRemove', row}); loadAll(); }
+    catch(err){ toast('Not saved — '+err.message); loadAll(); }
+  }
+}
+async function doMoveStore(){
+  const dest = $('#moveDest').value;
+  if(!dest){ toast('Choose a destination store'); return; }
+  const t = window._sTracker||'consumables';
+  const picked = [...selMove].map(ix=>state.items[ix]).filter(i=>i && i.tracker===t);
+  if(!picked.length){ toast('Tick at least one item'); return; }
+  picked.forEach(i=>i.loc=dest);
+  const rows = picked.map(i=>i._row).filter(Boolean);
+  selMove.clear(); render();
+  toast(picked.length+' item(s) moved to '+dest);
+  if(LIVE){
+    try{ await api({action:'moveStore', tracker:TRACKER_TAB[t], rows, toStore:dest}); }
+    catch(err){ toast('Not saved — '+err.message); loadAll(); }
+  }
+}
+
 /* ---------------- router ---------------- */
 function goHome(e){
   e.preventDefault();
@@ -2083,6 +2302,9 @@ function render(){
   else if(v==='labels') m.innerHTML = labelsView();
   else if(v==='implants') m.innerHTML = implantsView();
   else if(v==='instruments') m.innerHTML = sterilView();
+  else if(v==='values') m.innerHTML = valuesView();
+  else if(v==='obsolete') m.innerHTML = obsoleteView();
+  else if(v==='stores') m.innerHTML = storesView();
   else m.innerHTML = trackerView(v);
 }
 
@@ -2112,7 +2334,8 @@ function mapItem(tab, r){
     qty: Number(r.Qty)||0, reorder: Number(r.ReorderLevel)||0,
     cost: r.UnitCost!=null && r.UnitCost!=='' ? Number(r.UnitCost) : null,
     expiry: r.Expiry ? String(r.Expiry).slice(0,10) : null,
-    batch: r.Batch||'', status: r.Status||''};
+    batch: r.Batch||'', status: r.Status||'',
+    obsolete: String(r.Obsolete||'').toLowerCase()==='yes'};
 }
 
 async function loadAll(){
@@ -2157,6 +2380,8 @@ async function loadAll(){
       returnedBy:d.ReturnedBy||'', status:st};});
     state.alerts = data.alerts.map(a=>({_row:a._row, ts:a.Timestamp, type:a.Type,
       item:a.Item, detail:a.Detail, status:a.Status, tracker:a.Tracker}));
+    state.stores = (data.stores||[]).filter(s=>s.Store)
+      .map(s=>({_row:s._row, tracker:String(s.Tracker||'').toLowerCase(), store:String(s.Store)}));
     data.barcodeLinks.forEach(b=>{
       const i = state.items.findIndex(it=>it.code===String(b.Code) &&
                                           it.tracker===String(b.Tracker).toLowerCase());
@@ -2182,9 +2407,9 @@ try { session = JSON.parse(localStorage.getItem('bollin_session')||'null'); } ca
 if(session) myName = session.displayName || '';
 
 const PERMS = {
-  admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1},
-  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1},
-  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0, instr:0, reports:0}
+  admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:1, stores:1},
+  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:0, stores:0},
+  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0, instr:0, reports:0, obsolete:0, stores:0}
 };
 function role(){ return LIVE ? (session ? session.role : null) : 'admin'; }
 function can(p){ const r = role(); return !!(r && PERMS[r] && PERMS[r][p]); }
@@ -2246,6 +2471,9 @@ function viewAllowed(v){
   if(v==='labels') return can('labels');
   if(v==='implants') return can('implants');
   if(v==='alerts') return can('alerts');
+  if(v==='values') return can('values');
+  if(v==='obsolete') return can('obsolete');
+  if(v==='stores') return can('stores');
   return true;
 }
 function applyNavPerms(){

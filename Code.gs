@@ -30,7 +30,8 @@ const ACTION_ROLE = {
   implantAdd:'staff', implantUpdate:'staff',
   dispatchAssign:'staff', dispatchReceive:'staff', dispatchAdd:'staff', dispatchReturn:'staff',
   instrumentAdd:'staff',
-  addItem:'admin', updateItem:'admin', setBarcodes:'admin'
+  addItem:'admin', updateItem:'admin', setBarcodes:'admin',
+  moveStore:'admin', storeAdd:'admin', storeRemove:'admin'
 };
 const ROLE_RANK = { common: 0, staff: 1, admin: 2 };
 
@@ -69,6 +70,9 @@ function doPost(e) {
       case 'dispatchAssign': return json_(dispatchAssign_(req));
       case 'dispatchReceive':return json_(dispatchReceive_(req));
       case 'instrumentAdd':  return json_(instrumentAdd_(req));
+      case 'moveStore':   return json_(moveStore_(req));
+      case 'storeAdd':    return json_(storeAdd_(req));
+      case 'storeRemove': return json_(storeRemove_(req));
       case 'ack':       return json_(ackAlert_(req));
       case 'stocktake': return json_(stocktake_(req));
       default:          return json_({ ok: false, error: 'Unknown action' });
@@ -232,6 +236,7 @@ function getAll_(session) {
     implants: readTab_('Implants').reverse(),
     dispatch: readTab_('DispatchLog').reverse(),
     barcodeLinks: readTab_('BarcodeLinks'),
+    stores: readTab_('Stores'),
     serverTime: new Date().toISOString()
   };
 }
@@ -287,6 +292,17 @@ function addRequest_(q) {
     Math.max(1, Number(q.qty) || 1), q.size || '', 'Requested', '', '', ''
   ]);
   logAct_('Request submitted', {tracker: 'Requests', name: q.item, qty: q.qty, by: q.by, note: q.size ? 'Size: ' + q.size : ''});
+  const notify = setting_('request_email', '');
+  if (notify) {
+    try {
+      MailApp.sendEmail({ to: notify,
+        subject: setting_('app_name', 'Bollin Clinic Inventory') + ' — new request: ' + q.item,
+        htmlBody: '<p><b>' + (q.by || 'Someone') + '</b> has requested:</p>' +
+          '<p style="font-size:15px"><b>' + q.item + '</b> — qty ' + (q.qty || 1) +
+          (q.size ? ', size ' + q.size : '') + '</p>' +
+          '<p>Respond in the app under Requests.</p>' });
+    } catch (e) { /* email failure must not block the request */ }
+  }
   return { ok: true };
 }
 
@@ -597,6 +613,26 @@ function migrate() {
       'Type an initial password in the Password column — it is replaced by a secure hash the first time the person signs in. Active: yes/no.')
       .setFontStyle('italic').setFontSize(9);
   }
+  // 1d2. Obsolete column on every tracker tab
+  ITEM_TABS.forEach(t => {
+    const shT = ss.getSheetByName(t);
+    if (!shT) return;
+    const haveO = shT.getRange(1, 1, 1, Math.max(shT.getLastColumn(), 1)).getValues()[0].map(String);
+    if (haveO.indexOf('Obsolete') < 0) {
+      shT.getRange(1, shT.getLastColumn() + 1).setValue('Obsolete')
+        .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+    }
+  });
+  // 1d3. Stores tab (managed store list)
+  if (!ss.getSheetByName('Stores')) {
+    const sto = ss.insertSheet('Stores');
+    sto.getRange(1, 1, 1, 2).setValues([['Tracker', 'Store']])
+      .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+    sto.setFrozenRows(1);
+    sto.getRange(3, 1).setValue(
+      'Stores also appear automatically from item locations; rows here add empty stores before items move in.')
+      .setFontStyle('italic').setFontSize(9);
+  }
   // 1e. Transactions tab: ensure Activity column
   const tx = ss.getSheetByName('Transactions');
   if (tx) {
@@ -611,7 +647,10 @@ function migrate() {
   if (st) {
     const keys = st.getRange(1, 1, Math.max(st.getLastRow(), 1), 1).getValues().map(r => String(r[0]));
     if (keys.indexOf('activity_email') < 0) {
-      st.appendRow(['activity_email', '', 'Nightly midnight activity-log email recipient (falls back to alert_email if empty)']);
+      st.appendRow(['activity_email', '', 'Nightly midnight activity-log email recipient(s), comma-separated (falls back to alert_email if empty)']);
+    }
+    if (keys.indexOf('request_email') < 0) {
+      st.appendRow(['request_email', '', 'Email(s) notified instantly when a new request is submitted, comma-separated']);
     }
   }
   // 2. Requests tab: old schema (Tracker/Code, HandledAt) -> new (Size, DateResponded, Remarks)
@@ -681,6 +720,39 @@ function stocktake_(q) {
     note: (q.entries || []).filter(e => Number(e.counted) !== Number(e.expected)).length + ' variance(s)' +
           (q.apply ? ', stock adjusted' : '')});
   return { ok: true, saved: (q.entries || []).length };
+}
+
+/* ========================= stores & transfers ============================ */
+
+function moveStore_(q) {
+  // q: {tracker, rows:[sheetRow,...], toStore}
+  const sh = ss_().getSheetByName(q.tracker);
+  if (!sh) return { ok: false, error: 'No tab: ' + q.tracker };
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const cLoc = head.indexOf('Location') + 1;
+  if (!cLoc) return { ok: false, error: 'No Location column in ' + q.tracker };
+  (q.rows || []).forEach(r => sh.getRange(r, cLoc).setValue(q.toStore || ''));
+  logAct_('Stock transferred', {tracker: q.tracker, name: (q.rows || []).length + ' item(s)',
+    qty: (q.rows || []).length, note: 'Moved to ' + q.toStore});
+  return { ok: true, moved: (q.rows || []).length };
+}
+
+function storeAdd_(q) {
+  const sh = ss_().getSheetByName('Stores');
+  if (!sh) return { ok: false, error: 'Stores tab missing — run migrate()' };
+  sh.appendRow([q.tracker || '', q.store || '']);
+  logAct_('Store added', {tracker: q.tracker, name: q.store});
+  return { ok: true };
+}
+
+function storeRemove_(q) {
+  // q: {row}
+  const sh = ss_().getSheetByName('Stores');
+  if (!sh) return { ok: false, error: 'Stores tab missing' };
+  const name = sh.getRange(q.row, 2).getValue();
+  sh.deleteRow(q.row);
+  logAct_('Store removed', {name: String(name || '')});
+  return { ok: true };
 }
 
 /* ============================ users & auth =============================== */
@@ -830,6 +902,7 @@ function dailyStockCheck() {
 
   ITEM_TABS.filter(t => t !== 'Instruments').forEach(t => {
     readTab_(t).forEach(it => {
+      if (String(it.Obsolete || '').toLowerCase() === 'yes') return;   // dead stock: no alerts
       const qty = Number(it.Qty) || 0, ro = Number(it.ReorderLevel) || 0;
       if (qty === 0) out.push({ t: t, it: it });
       else if (ro > 0 && qty <= ro) low.push({ t: t, it: it });
