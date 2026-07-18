@@ -31,7 +31,8 @@ const ACTION_ROLE = {
   dispatchAssign:'staff', dispatchReceive:'staff', dispatchAdd:'staff', dispatchReturn:'staff',
   instrumentAdd:'staff',
   addItem:'admin', updateItem:'admin', setBarcodes:'admin',
-  moveStore:'admin', storeAdd:'admin', storeRemove:'admin', clearBarcode:'admin'
+  moveStore:'admin', storeAdd:'admin', storeRemove:'admin', clearBarcode:'admin',
+  assetAdd:'admin', assetUpdate:'admin'
 };
 const ROLE_RANK = { common: 0, staff: 1, admin: 2 };
 
@@ -74,6 +75,8 @@ function doPost(e) {
       case 'storeAdd':    return json_(storeAdd_(req));
       case 'storeRemove': return json_(storeRemove_(req));
       case 'clearBarcode':return json_(clearBarcode_(req));
+      case 'assetAdd':    return json_(assetAdd_(req));
+      case 'assetUpdate': return json_(assetUpdate_(req));
       case 'ack':       return json_(ackAlert_(req));
       case 'stocktake': return json_(stocktake_(req));
       default:          return json_({ ok: false, error: 'Unknown action' });
@@ -238,6 +241,7 @@ function getAll_(session) {
     dispatch: readTab_('DispatchLog').reverse(),
     barcodeLinks: readTab_('BarcodeLinks'),
     stores: readTab_('Stores'),
+    assets: (session && session.role === 'admin') ? readTab_('Assets') : [],
     serverTime: new Date().toISOString()
   };
 }
@@ -650,6 +654,13 @@ function migrate() {
       'Stores also appear automatically from item locations; rows here add empty stores before items move in.')
       .setFontStyle('italic').setFontSize(9);
   }
+  // 1d4. Assets tab
+  if (!ss.getSheetByName('Assets')) {
+    const asx = ss.insertSheet('Assets');
+    asx.getRange(1, 1, 1, ASSET_HEADERS.length).setValues([ASSET_HEADERS])
+      .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+    asx.setFrozenRows(1);
+  }
   // 1e. Transactions tab: ensure Activity column
   const tx = ss.getSheetByName('Transactions');
   if (tx) {
@@ -757,6 +768,46 @@ function clearBarcode_(q) {
     }
   }
   logAct_('Barcode removed', {tracker: q.tracker, code: q.barcode || '', note: 'Label cleared for regeneration'});
+  return { ok: true };
+}
+
+/* =============================== assets ================================= */
+
+const ASSET_HEADERS = ['Name','SerialNumber','Function','Supplier','SupplierContact',
+  'Location','LastMaintenance','NextMaintenanceDue','Status','Notes'];
+
+function assetAdd_(q) {
+  const sh = ss_().getSheetByName('Assets');
+  if (!sh) return { ok: false, error: 'Assets tab missing — run migrate()' };
+  const f = q.fields || {};
+  if (!f.Name) return { ok: false, error: 'Name required' };
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  sh.appendRow(head.map(h => {
+    let v = f[h];
+    if (v === undefined || v === null) return '';
+    if (h.indexOf('Maintenance') >= 0 && v) return new Date(v);
+    return v;
+  }));
+  logAct_('Asset added', {tracker: 'Assets', code: f.SerialNumber || '', name: f.Name,
+    note: 'Status: ' + (f.Status || 'Working')});
+  return { ok: true, row: sh.getLastRow() };
+}
+
+function assetUpdate_(q) {
+  const sh = ss_().getSheetByName('Assets');
+  if (!sh) return { ok: false, error: 'Assets tab missing' };
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  Object.keys(q.fields || {}).forEach(h => {
+    const c2 = head.indexOf(h);
+    if (c2 < 0) return;
+    let v = q.fields[h];
+    if (v === null || v === undefined) v = '';
+    if (h.indexOf('Maintenance') >= 0 && v) v = new Date(v);
+    sh.getRange(q.row, c2 + 1).setValue(v);
+  });
+  logAct_('Asset updated', {tracker: 'Assets',
+    name: String(sh.getRange(q.row, head.indexOf('Name') + 1).getValue() || ''),
+    note: Object.keys(q.fields || {}).map(k => k + ': ' + q.fields[k]).join(', ').slice(0, 180)});
   return { ok: true };
 }
 
