@@ -84,6 +84,15 @@
   .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:22px}
   .tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .15s}
   .tile:hover{border-color:var(--pine)}
+  .tile{position:relative}
+  .tile .ic{position:absolute;top:10px;right:12px;font-size:19px;opacity:.9}
+  @keyframes attnGlow{0%,100%{box-shadow:0 0 0 0 rgba(176,138,62,0)}50%{box-shadow:0 0 0 6px rgba(176,138,62,.28)}}
+  .tile.attn{border-color:var(--gold);animation:attnGlow 1.7s infinite}
+  @keyframes navBlink{0%,100%{opacity:1}50%{opacity:.35}}
+  .navdot{display:inline-block;min-width:19px;height:19px;border-radius:99px;background:var(--red);color:#fff;
+          font-size:11px;font-weight:700;line-height:19px;text-align:center;padding:0 5px;margin-left:7px;
+          animation:navBlink 1.4s infinite}
+  @media (prefers-reduced-motion:reduce){.tile.attn,.navdot{animation:none}}
   .tile .n{font-size:26px;font-weight:700;font-family:var(--mono)}
   .tile .l{font-size:12px;color:var(--ink-soft);margin-top:2px}
   .tile.warn .n{color:var(--amber)} .tile.bad .n{color:var(--red)} .tile.exp .n{color:var(--exp)}
@@ -321,9 +330,9 @@
         <option value="instruments">Instruments</option>
       </select></div>
     <div class="m-row"><label for="adName">Name *</label><input id="adName" type="text" placeholder="e.g. 4-0 Vicryl"></div>
-    <div class="m-row"><label for="adCat">Category</label><input id="adCat" type="text" placeholder="e.g. Theatre"></div>
+    <div class="m-row"><label for="adCat">Category</label><select id="adCat" onchange="plusOption(this,'category')"></select></div>
     <div class="m-row"><label for="adSup">Supplier</label><input id="adSup" type="text"></div>
-    <div class="m-row"><label for="adLoc">Location</label><input id="adLoc" type="text" placeholder="e.g. Stock Room 1"></div>
+    <div class="m-row"><label for="adLoc">Location</label><select id="adLoc" onchange="plusOption(this,'location')"></select></div>
     <div class="m-row"><label for="adCode">Code</label><input id="adCode" type="text" placeholder="Supplier / CSSD code (optional)"></div>
     <div class="m-row"><label for="adBar">Barcode</label>
       <input id="adBar" type="text" placeholder="Scanned or generated">
@@ -738,17 +747,19 @@ function dashboardView(){
   const away = state.dispatch.filter(d=>d.status!=='Returned');
   const val = stock.reduce((s,i)=> s + (i.cost!=null ? i.cost*i.qty : 0), 0);
   const costed = stock.filter(i=>i.cost!=null).length;
+  const pend = state.requests.filter(r=>r.status==='Requested').length;
   return `
     <h1>Dashboard</h1>
     <div class="sub">Live position across all five trackers</div>
     ${LIVE ? '' : '<div class="note">Demo mode — sample data only. Paste your Apps Script URL into CONFIG.API_URL to connect the live Google Sheet.</div>'}
     <div class="tiles">
-      <div class="tile warn" onclick="nav('dash-low')"><div class="n">${low.length}</div><div class="l">Low stock items</div></div>
-      <div class="tile bad"  onclick="nav('dash-out')"><div class="n">${out.length}</div><div class="l">Out of stock</div></div>
-      <div class="tile exp"  onclick="nav('dash-exp')"><div class="n">${exp.length}</div><div class="l">Expiring ≤ 90 days</div></div>
-      <div class="tile"      onclick="nav('instruments')"><div class="n">${away.length}</div><div class="l">Lines out at CSSD</div></div>
-      <div class="tile warn" onclick="sterTab='onhand';nav('instruments')"><div class="n">${instExpiring().length}</div><div class="l">Instruments expiring ≤ 60 days</div></div>
-      ${can('values')?`<div class="tile" onclick="nav('values')"><div class="n">£${val.toFixed(0)}</div><div class="l">Stock value (${costed} of ${stock.length} items costed)</div></div>`:''}
+      <div class="tile warn ${low.length?'attn':''}" onclick="nav('dash-low')"><span class="ic">📉</span><div class="n">${low.length}</div><div class="l">Low stock items</div></div>
+      <div class="tile bad ${out.length?'attn':''}"  onclick="nav('dash-out')"><span class="ic">🚫</span><div class="n">${out.length}</div><div class="l">Out of stock</div></div>
+      <div class="tile exp ${exp.length?'attn':''}"  onclick="nav('dash-exp')"><span class="ic">⏳</span><div class="n">${exp.length}</div><div class="l">Expiring ≤ 90 days</div></div>
+      <div class="tile"      onclick="nav('instruments')"><span class="ic">🔁</span><div class="n">${away.length}</div><div class="l">Lines out at CSSD</div></div>
+      <div class="tile warn ${instExpiring().length?'attn':''}" onclick="sterTab='onhand';nav('instruments')"><span class="ic">🧰</span><div class="n">${instExpiring().length}</div><div class="l">Instruments expiring ≤ 60 days</div></div>
+      ${can('values')?`<div class="tile" onclick="nav('values')"><span class="ic">💷</span><div class="n">£${val.toFixed(0)}</div><div class="l">Stock value (${costed} of ${stock.length} items costed)</div></div>`:''}
+      <div class="tile ${pend?'attn':''}" onclick="nav('requests')"><span class="ic">📨</span><div class="n">${pend}</div><div class="l">Requests awaiting response</div></div>
     </div>
     <h1 style="font-size:16px">Needs attention</h1>
     <div class="sub">Low, out of stock and short-dated items across every tracker</div>
@@ -1850,13 +1861,42 @@ async function stkReportPDF(){
 
 /* ---------------- add / edit item ---------------- */
 let editItem = null;
+
+function fillSelect(sel, options, selected){
+  sel.innerHTML = '<option value="">—</option>' +
+    options.map(o=>`<option ${o===selected?'selected':''}>${o}</option>`).join('') +
+    '<option value="__new">＋ Add new…</option>';
+  if(selected && options.indexOf(selected)<0 && selected!=='')
+    sel.insertAdjacentHTML('beforeend', `<option selected>${selected}</option>`);
+}
+function populateAddSelects(tracker, cat, loc){
+  const cats = [...new Set(state.items.filter(i=>i.tracker===tracker && !i.obsolete)
+    .map(i=>i.cat).filter(Boolean))].sort();
+  fillSelect($('#adCat'), cats, cat||'');
+  fillSelect($('#adLoc'), allStoresFor(tracker), loc||'');
+}
+function plusOption(sel, what){
+  if(sel.value!=='__new') return;
+  const name = prompt('New '+what+' name:');
+  if(!name || !name.trim()){ sel.value=''; return; }
+  const v = name.trim();
+  sel.insertAdjacentHTML('beforeend', `<option>${v}</option>`);
+  sel.value = v;
+  if(what==='location' && can('stores') && LIVE){
+    api({action:'storeAdd', tracker:$('#adTracker').value, store:v}).catch(()=>{});
+  }
+}
 function openAdd(scannedCode){
   editItem = null;
-  ['adName','adCat','adSup','adLoc','adCode','adCost','adBatch','adExp'].forEach(id=>$('#'+id).value='');
+  ['adName','adSup','adCode','adCost','adBatch','adExp'].forEach(id=>$('#'+id).value='');
   $('#adUnit').value='Each'; $('#adQty').value=0; $('#adRo').value=1;
   $('#adBar').value = scannedCode || '';
   if(currentView in TRACKER_TAB) $('#adTracker').value = currentView;
   $('#adTracker').disabled = false;
+  populateAddSelects($('#adTracker').value, '', '');
+  $('#adTracker').onchange = ()=>populateAddSelects($('#adTracker').value,
+    $('#adCat').value==='__new'?'':$('#adCat').value,
+    $('#adLoc').value==='__new'?'':$('#adLoc').value);
   $('#addDlgTitle').textContent='Add new item'; $('#addDlgSave').textContent='Add item';
   addDlg.showModal();
   $('#adName').focus();
@@ -1865,8 +1905,9 @@ function openEdit(i){
   const it = state.items[i];
   editItem = it;
   $('#adTracker').value = it.tracker; $('#adTracker').disabled = true;
-  $('#adName').value=it.name; $('#adCat').value=it.cat; $('#adSup').value=it.supplier||'';
-  $('#adLoc').value=it.loc; $('#adCode').value=it.code; $('#adBar').value=it.barcode;
+  populateAddSelects(it.tracker, it.cat||'', it.loc||'');
+  $('#adName').value=it.name; $('#adSup').value=it.supplier||'';
+  $('#adCode').value=it.code; $('#adBar').value=it.barcode;
   $('#adUnit').value=it.unit; $('#adQty').value=it.qty; $('#adRo').value=it.reorder;
   $('#adCost').value=it.cost!=null?it.cost:''; $('#adBatch').value=it.batch||'';
   $('#adExp').value=it.expiry||'';
@@ -1877,10 +1918,12 @@ async function saveNewItem(){
   const name = $('#adName').value.trim();
   if(!name){ toast('Name is required'); return; }
   const tracker = $('#adTracker').value;
+  const catV = $('#adCat').value==='__new'?'':$('#adCat').value;
+  const locV = $('#adLoc').value==='__new'?'':$('#adLoc').value;
   const vals = {
     code:$('#adCode').value.trim(), barcode:$('#adBar').value.trim(),
-    name, cat:$('#adCat').value.trim(), supplier:$('#adSup').value.trim(),
-    loc:$('#adLoc').value.trim(), unit:$('#adUnit').value.trim()||'Each',
+    name, cat:catV.trim(), supplier:$('#adSup').value.trim(),
+    loc:locV.trim(), unit:$('#adUnit').value.trim()||'Each',
     qty:Math.max(0,parseInt($('#adQty').value||'0',10)),
     reorder:Math.max(0,parseInt($('#adRo').value||'0',10)),
     cost:$('#adCost').value?Number($('#adCost').value):null,
@@ -1946,14 +1989,21 @@ function labelsView(){
   const trackers = ['consumables','meds','garments','instruments','linen'];
   const items = lblItems();
   const missing = state.items.filter(i=>i.tracker===lbl.tracker && !i.barcode).length;
-  const rows = items.slice(0,400).map(it=>`<tr>
-      <td data-label=""><strong>${it.name}</strong></td>
+  const allSel = items.length && items.every(i=>selLbl.has(state.items.indexOf(i)));
+  const rows = items.slice(0,400).map(it=>{
+    const ix = state.items.indexOf(it);
+    return `<tr>
+      <td data-label="" style="display:flex;gap:10px;align-items:center">
+        <input type="checkbox" ${selLbl.has(ix)?'checked':''} onchange="toggleSel(selLbl,${ix})" style="width:18px;height:18px">
+        <strong>${it.name}</strong></td>
       <td class="code" data-label="Code">${it.code||'—'}</td>
       <td class="code" data-label="Barcode">${it.barcode||'<span style="color:var(--amber)">none</span>'}</td>
       <td data-label="Location">${it.loc||'—'}</td>
       <td class="rowbtns" data-label="">
-        <button onclick="printSingleLabel(${state.items.indexOf(it)},'barcode')">Barcode</button>
-        <button onclick="printSingleLabel(${state.items.indexOf(it)},'qr')">QR</button></td></tr>`).join('');
+        <button onclick="printSingleLabel(${ix},'barcode')">Barcode</button>
+        <button onclick="printSingleLabel(${ix},'qr')">QR</button>
+        ${it.barcode?`<button onclick="removeLabel(${ix})" style="color:var(--red)" title="Delete this barcode so a new one can be generated">✕</button>`:''}</td></tr>`;
+  }).join('');
   return `
     <h1>Labels</h1>
     <div class="sub">Generate Bollin codes for items without a barcode, then print labels to stick on shelves, boxes or bags.
@@ -1975,7 +2025,12 @@ function labelsView(){
     </div>
     <div class="toolrow">
       <button class="btn" onclick="assignCodes()">Generate codes for ${missing} item(s) without barcode</button>
-      <button class="btn primary" onclick="printLabels()">Print labels for this list</button>
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px">
+        <input type="checkbox" ${allSel?'checked':''} onchange="selAllLbl(this.checked)" style="width:18px;height:18px">
+        Tick all shown
+      </label>
+      <button class="btn primary" onclick="labelSheetPDF('barcode')">Barcode sheet PDF (10/page) — ${selLbl.size} ticked</button>
+      <button class="btn primary" onclick="labelSheetPDF('qr')">QR sheet PDF (15/page) — ${selLbl.size} ticked</button>
     </div>
     ${tableForLabels(rows, items.length)}`;
 }
@@ -2001,6 +2056,96 @@ async function assignCodes(){
     catch(err){ toast('Not saved to sheet — '+err.message); }
   }
 }
+const selLbl = new Set();
+function selAllLbl(on){
+  selLbl.clear();
+  if(on) lblItems().forEach(i=>selLbl.add(state.items.indexOf(i)));
+  render();
+}
+async function removeLabel(ix){
+  const it = state.items[ix];
+  if(!confirm('Delete the barcode "'+it.barcode+'" from '+it.name+'? You can then generate or scan a new one.')) return;
+  const old = it.barcode;
+  it.barcode = '';
+  Object.keys(state.barcodeLinks).forEach(k=>{ if(k===old) delete state.barcodeLinks[k]; });
+  render(); toast('Barcode removed from '+it.name);
+  if(LIVE && it._row){
+    try{ await api({action:'clearBarcode', tracker:TRACKER_TAB[it.tracker], row:it._row, barcode:old}); }
+    catch(err){ it.barcode=old; toast('Not saved — '+err.message); render(); }
+  }
+}
+
+function makeSymbolDataUrl(code, format){
+  // returns {url, w, h} pixel dims
+  if(format==='qr'){
+    const holder = document.createElement('div');
+    new QRCode(holder, {text:String(code), width:220, height:220, correctLevel:QRCode.CorrectLevel.M});
+    const cv = holder.querySelector('canvas');
+    return {url: cv.toDataURL('image/png'), w:220, h:220};
+  }
+  const cv = document.createElement('canvas');
+  JsBarcode(cv, String(code), {format:'CODE128', displayValue:false, margin:4, height:90, width:2.2});
+  return {url: cv.toDataURL('image/png'), w:cv.width, h:cv.height};
+}
+
+async function labelSheetPDF(format){
+  const picked = [...selLbl].map(ix=>state.items[ix]).filter(Boolean);
+  if(!picked.length){ toast('Tick at least one item first'); return; }
+  // ensure every picked item has a code
+  const newCodes = [];
+  picked.forEach(it=>{
+    if(!it.barcode && !it.code){
+      it.barcode = genCode(it.tracker);
+      state.barcodeLinks[it.barcode] = state.items.indexOf(it);
+      newCodes.push({tracker:TRACKER_TAB[it.tracker], code:it.code||it.name, barcode:it.barcode});
+    }
+  });
+  if(newCodes.length && LIVE)
+    api({action:'setBarcodes', entries:newCodes}).catch(e=>toast('New codes not saved — '+e.message));
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+  const M = 10, W = 210, H = 297;
+  const cols = format==='qr' ? 3 : 2;
+  const rowsP = 5;                                   // 15/page for QR, 10/page for barcodes
+  const cw = (W - 2*M) / cols, ch = (H - 2*M) / rowsP;
+  const perPage = cols * rowsP;
+
+  picked.forEach((it, i)=>{
+    const p = i % perPage;
+    if(i > 0 && p === 0) doc.addPage();
+    const cx = M + (p % cols) * cw, cy = M + Math.floor(p / cols) * ch;
+    // dashed cut guide
+    doc.setDrawColor(190,190,190); doc.setLineDashPattern([1.4,1.4],0); doc.setLineWidth(0.15);
+    doc.rect(cx+1.5, cy+1.5, cw-3, ch-3);
+    doc.setLineDashPattern([],0);
+    const code = it.barcode || it.code;
+    // name (top, centred, wrapped to 2 lines)
+    doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(23,37,31);
+    const nameLines = doc.splitTextToSize(it.name, cw-10).slice(0,2);
+    doc.text(nameLines, cx+cw/2, cy+8.5, {align:'center'});
+    // symbol (middle)
+    try{
+      const sym = makeSymbolDataUrl(code, format);
+      if(format==='qr'){
+        const s = Math.min(26, ch-26);
+        doc.addImage(sym.url,'PNG', cx+(cw-s)/2, cy+ch/2-s/2+1, s, s);
+      } else {
+        const bw = cw-16, bh = Math.min(16, ch-30);
+        doc.addImage(sym.url,'PNG', cx+8, cy+ch/2-bh/2+1.5, bw, bh);
+      }
+    }catch(e){}
+    // code number (bottom, centred)
+    doc.setFont('courier','normal'); doc.setFontSize(9); doc.setTextColor(60,60,60);
+    doc.text(String(code), cx+cw/2, cy+ch-6, {align:'center'});
+  });
+
+  doc.save((format==='qr'?'QR':'Barcode')+'_Labels_'+picked.length+'items_'+
+    new Date().toISOString().slice(0,10)+'.pdf');
+  toast('Label sheet downloaded — '+picked.length+' label(s), '+
+    Math.ceil(picked.length/perPage)+' page(s)');
+}
+
 function printSingleLabel(ix, format){
   const it = state.items[ix];
   if(!it) return;
@@ -2288,7 +2433,14 @@ document.querySelectorAll('nav a').forEach(a=>a.addEventListener('click',e=>{
   a.classList.add('active');
   nav(a.dataset.view);
 }));
+function updateNavBadges(){
+  const a = document.querySelector('nav a[data-view=requests]');
+  if(!a) return;
+  const pend = state.requests.filter(r=>r.status==='Requested').length;
+  a.innerHTML = 'Requests' + (pend?` <span class="navdot">${pend}</span>`:'');
+}
 function render(){
+  updateNavBadges();
   const v = currentView;
   const m = $('#main');
   if(v==='dashboard') m.innerHTML = dashboardView();

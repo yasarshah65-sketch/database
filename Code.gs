@@ -31,7 +31,7 @@ const ACTION_ROLE = {
   dispatchAssign:'staff', dispatchReceive:'staff', dispatchAdd:'staff', dispatchReturn:'staff',
   instrumentAdd:'staff',
   addItem:'admin', updateItem:'admin', setBarcodes:'admin',
-  moveStore:'admin', storeAdd:'admin', storeRemove:'admin'
+  moveStore:'admin', storeAdd:'admin', storeRemove:'admin', clearBarcode:'admin'
 };
 const ROLE_RANK = { common: 0, staff: 1, admin: 2 };
 
@@ -73,6 +73,7 @@ function doPost(e) {
       case 'moveStore':   return json_(moveStore_(req));
       case 'storeAdd':    return json_(storeAdd_(req));
       case 'storeRemove': return json_(storeRemove_(req));
+      case 'clearBarcode':return json_(clearBarcode_(req));
       case 'ack':       return json_(ackAlert_(req));
       case 'stocktake': return json_(stocktake_(req));
       default:          return json_({ ok: false, error: 'Unknown action' });
@@ -359,6 +360,22 @@ function implantAdd_(q) {
   logAct_('Implant ordered', {tracker: 'Implants', code: f.PATNumber || '',
     name: (f.PatientInitials || '') + ' — ' + (f.ImplantDetails || ''), qty: f.Qty,
     note: 'Status: ' + (f.Status || 'Pending')});
+  const notify = setting_('implant_email', '');
+  if (notify) {
+    try {
+      MailApp.sendEmail({ to: notify,
+        subject: setting_('app_name', 'Bollin Clinic Inventory') + ' — new implant order: ' +
+          (f.PatientInitials || '') + ' (' + (f.PATNumber || '') + ')',
+        htmlBody: '<p>A new implant order has been created:</p><table style="border-collapse:collapse">' +
+          [['Patient', f.PatientInitials], ['PAT number', f.PATNumber], ['Surgeon', f.Surgeon],
+           ['Surgery date', f.SurgeryDate], ['Implants', f.ImplantDetails], ['Qty', f.Qty],
+           ['Ordered by', f.OrderedBy], ['Status', f.Status || 'Pending'], ['Remarks', f.Remarks]]
+          .filter(x => x[1]).map(x =>
+            '<tr><td style="border:1px solid #C9D6D2;padding:4px 8px;background:#F2F7F6;font-weight:600">' +
+            x[0] + '</td><td style="border:1px solid #C9D6D2;padding:4px 8px">' + x[1] + '</td></tr>').join('') +
+          '</table><p>Track it in the app under Implant orders.</p>' });
+    } catch (e) { /* never block the order */ }
+  }
   return { ok: true, row: sh.getLastRow() };
 }
 
@@ -652,6 +669,9 @@ function migrate() {
     if (keys.indexOf('request_email') < 0) {
       st.appendRow(['request_email', '', 'Email(s) notified instantly when a new request is submitted, comma-separated']);
     }
+    if (keys.indexOf('implant_email') < 0) {
+      st.appendRow(['implant_email', '', 'Email(s) notified instantly when a new implant order is created, comma-separated']);
+    }
   }
   // 2. Requests tab: old schema (Tracker/Code, HandledAt) -> new (Size, DateResponded, Remarks)
   const sh = ss.getSheetByName('Requests');
@@ -720,6 +740,24 @@ function stocktake_(q) {
     note: (q.entries || []).filter(e => Number(e.counted) !== Number(e.expected)).length + ' variance(s)' +
           (q.apply ? ', stock adjusted' : '')});
   return { ok: true, saved: (q.entries || []).length };
+}
+
+function clearBarcode_(q) {
+  // q: {tracker, row, barcode} — clears the Barcode cell and any BarcodeLinks rows
+  const sh = ss_().getSheetByName(q.tracker);
+  if (!sh) return { ok: false, error: 'No tab: ' + q.tracker };
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const cBar = head.indexOf('Barcode') + 1;
+  if (cBar && q.row) sh.getRange(q.row, cBar).setValue('');
+  if (q.barcode) {
+    const bl = ss_().getSheetByName('BarcodeLinks');
+    const vals = bl.getDataRange().getValues();
+    for (let r = vals.length - 1; r >= 1; r--) {
+      if (String(vals[r][0]) === String(q.barcode)) bl.deleteRow(r + 1);
+    }
+  }
+  logAct_('Barcode removed', {tracker: q.tracker, code: q.barcode || '', note: 'Label cleared for regeneration'});
+  return { ok: true };
 }
 
 /* ========================= stores & transfers ============================ */
