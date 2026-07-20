@@ -97,6 +97,7 @@
   nav a[data-view=log]{--icn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 6h13M8 12h13M8 18h13'/%3E%3Cpath d='M3.5 6h.01M3.5 12h.01M3.5 18h.01'/%3E%3C/svg%3E")}
   nav a[data-view=requests]{--icn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 13h-5l-2 3h-6l-2-3H2'/%3E%3Cpath d='M5 5h14l3 8v6H2v-6z'/%3E%3C/svg%3E")}
   nav a[data-view=alerts]{--icn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8'/%3E%3Cpath d='M10 21a2.2 2.2 0 0 0 4 0'/%3E%3C/svg%3E")}
+  nav a[data-view=gas]{--icn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5V3h6v2'/%3E%3Crect x='7' y='5' width='10' height='17' rx='4'/%3E%3Cpath d='M10 11h4'/%3E%3C/svg%3E")}
   nav a[data-view=stocktake]{--icn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='4' width='14' height='17' rx='2'/%3E%3Cpath d='M9 4a3 3 0 0 1 6 0'/%3E%3Cpath d='M9 13.5l2 2 4-4.5'/%3E%3C/svg%3E")}
   nav a[data-view=labels]{--icn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20.6 12.6L12.6 20.6a2 2 0 0 1-2.8 0L3 13.8V4h9.8l7.8 7.8a2 2 0 0 1 0 .8z'/%3E%3Cpath d='M7.5 7.5h.01'/%3E%3C/svg%3E")}
   nav a[data-view=values]{--icn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3v18h18'/%3E%3Cpath d='M7 14l4-4 3 3 5-6'/%3E%3C/svg%3E")}
@@ -166,6 +167,67 @@
 
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--pine-deep);color:#fff;padding:11px 20px;border-radius:9px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:50}
   .toast.show{opacity:1}
+
+  /* ---------- gas room checks ---------- */
+  .gaspanel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+  .gaspanel h2{font-size:15px;font-weight:700;color:var(--pine);display:flex;align-items:center;gap:9px;margin-bottom:12px}
+  .gaspanel h2 .due{font-size:10.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
+      padding:3px 9px;border-radius:99px;background:var(--gold-soft);color:var(--gold)}
+  .manifold{background:#232B2E;border-radius:12px;padding:14px;display:grid;
+      grid-template-columns:1fr auto 1fr;gap:12px;align-items:stretch}
+  .bank{background:#1A2124;border:1px solid #37464B;border-radius:10px;padding:10px 12px;text-align:center;
+      transition:all .25s ease}
+  .bank .bl{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:#8FB2AC;margin-bottom:7px}
+  .digital{font-family:var(--mono);font-weight:600;font-size:34px;letter-spacing:2px;background:#0B0F10;
+      border:1px solid #2C393D;border-radius:8px;color:#FF5A3C;text-shadow:0 0 10px rgba(255,90,60,.55);
+      width:100%;text-align:center;padding:7px 4px;outline:none;transition:all .25s ease}
+  .digital::placeholder{color:#4A3230;text-shadow:none}
+  .digital.ok{color:#4ADE80;text-shadow:0 0 10px rgba(74,222,128,.5)}
+  .digital.warn{color:#FBBF24;text-shadow:0 0 10px rgba(251,191,36,.5)}
+  .digital.crit{color:#FF5A3C;animation:critBlink 1s infinite}
+  @keyframes critBlink{0%,100%{opacity:1}50%{opacity:.35}}
+  .bank .bstat{font-size:11px;margin-top:7px;font-weight:700;letter-spacing:.5px}
+  .bank.inuse{border-color:#4ADE80;box-shadow:0 0 0 1px rgba(74,222,128,.35), inset 0 0 18px rgba(74,222,128,.06)}
+  .pipeline{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;min-width:110px}
+  .pipeline .digital{font-size:24px;padding:6px}
+  .pipeline .bl{font-size:9.5px;letter-spacing:1.2px;text-transform:uppercase;color:#8FB2AC}
+  .bankpick{display:flex;gap:0;border:1px solid #37464B;border-radius:8px;overflow:hidden;margin-top:8px}
+  .bankpick button{flex:1;padding:7px 0;background:#1A2124;border:none;color:#8FB2AC;font-weight:700;font-size:11px;
+      letter-spacing:.8px;cursor:pointer;transition:all .2s ease}
+  .bankpick button.on{background:#4ADE80;color:#0B0F10}
+  .led{width:13px;height:13px;border-radius:50%;display:inline-block;vertical-align:-2px;margin-right:7px;
+      background:#39454A;box-shadow:inset 0 0 3px rgba(0,0,0,.6)}
+  .led.green{background:#4ADE80;box-shadow:0 0 9px rgba(74,222,128,.8);animation:ledPulse 1.8s infinite}
+  .led.amber{background:#FBBF24;box-shadow:0 0 9px rgba(251,191,36,.8);animation:ledPulse 1.2s infinite}
+  .led.red{background:#FF5A3C;box-shadow:0 0 9px rgba(255,90,60,.8);animation:critBlink .9s infinite}
+  @keyframes ledPulse{0%,100%{opacity:1}50%{opacity:.55}}
+  .stepper{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .stepper button{width:46px;height:46px;border:none;background:var(--mist);font-size:22px;font-weight:700;
+      color:var(--pine);cursor:pointer;transition:background .15s ease}
+  .stepper button:hover{background:var(--ok-bg)}
+  .stepper input{width:64px;height:46px;border:none;text-align:center;font-family:var(--mono);font-size:19px;font-weight:600}
+  .steprow{display:flex;gap:16px;flex-wrap:wrap;align-items:end}
+  .steprow .fld label{display:block;font-size:12px;color:var(--ink-soft);font-weight:600;margin-bottom:5px}
+  .bigtoggle{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);
+      border-radius:12px;cursor:pointer;transition:all .2s ease;user-select:none}
+  .bigtoggle .tsw{width:52px;height:28px;border-radius:99px;background:#CBD5D1;position:relative;transition:all .25s ease;flex-shrink:0}
+  .bigtoggle .tsw::after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+      background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25);transition:all .25s ease}
+  .bigtoggle.on{border-color:var(--pine);background:var(--ok-bg)}
+  .bigtoggle.on .tsw{background:var(--pine)}
+  .bigtoggle.on .tsw::after{left:27px}
+  .deliv{display:flex;align-items:center;gap:10px;margin-top:12px;padding:11px 14px;border-radius:10px;
+      border:1.5px dashed var(--line);cursor:pointer;transition:all .2s ease;user-select:none}
+  .deliv.needed{border-color:var(--red);background:var(--red-bg);animation:attnGlow 1.7s infinite}
+  .deliv.on{border-style:solid;border-color:var(--pine);background:var(--ok-bg)}
+  .gasdone{background:var(--ok-bg);border:1px solid #BFD9D2;color:var(--pine);border-radius:10px;
+      padding:11px 15px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:9px}
+  @media (max-width:760px){
+    .manifold{grid-template-columns:1fr;gap:8px}
+    .pipeline{flex-direction:row;justify-content:space-between;min-width:0}
+    .pipeline .digital{width:auto;flex:1}
+    .digital{font-size:28px}
+  }
 
   /* ---------- login ---------- */
   #loginWrap{position:fixed;inset:0;background:var(--mist);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -299,6 +361,7 @@
     <a href="#requests" data-view="requests">Requests</a>
     <a href="#alerts" data-view="alerts">Alerts</a>
     <div class="navsec">Checks</div>
+    <a href="#gas" data-view="gas">Gas room checks</a>
     <a href="#stocktake" data-view="stocktake">Stocktake</a>
     <a href="#labels" data-view="labels">Labels</a>
     <a href="#values" data-view="values">Stock value</a>
@@ -837,7 +900,15 @@ function actBadge(a){
   return `<span class="badge ${cls}">${a||'—'}</span>`;
 }
 function logView(){
-  const rows = state.log.map(l=>`<tr>
+  const q = (window._lgq||'').toLowerCase();
+  const fa = window._lgAct||'', fb = window._lgBy||'', ft = window._lgTracker||'';
+  const uniq = k => [...new Set(state.log.map(x=>x[k]).filter(Boolean))].sort();
+  const acts = uniq('activity'), bys = uniq('by'), tracks = uniq('tracker');
+  const filtered = state.log.filter(l=>
+    (!fa || l.activity===fa) && (!fb || l.by===fb) && (!ft || l.tracker===ft) &&
+    (!q || (l.name||'').toLowerCase().includes(q) || (l.code||'').toLowerCase().includes(q) ||
+           (l.note||'').toLowerCase().includes(q)));
+  const rows = filtered.map(l=>`<tr>
       <td data-label=""><strong>${l.name||'—'}</strong></td>
       <td data-label="Activity">${actBadge(l.activity)}</td>
       <td data-label="When">${l.ts?new Date(l.ts).toLocaleString('en-GB'):''}</td>
@@ -862,8 +933,38 @@ function logView(){
       </span>
       <button class="btn primary" onclick="txReportPDF()">Download PDF</button>
     </div>`:''}
-    <table><thead><tr><th>Item</th><th>Activity</th><th>When</th><th>Code</th><th class="qty">Qty</th><th>By</th><th>Tracker</th><th>Details</th></tr></thead>
-    <tbody>${rows||'<tr><td colspan="8" style="color:var(--ink-soft)">No activity yet.</td></tr>'}</tbody></table>`;
+    <div class="toolrow">
+      <select onchange="window._lgAct=this.value;refreshLog()">
+        <option value="">All activities</option>
+        ${acts.map(a=>`<option ${a===fa?'selected':''}>${a}</option>`).join('')}
+      </select>
+      <select onchange="window._lgBy=this.value;refreshLog()">
+        <option value="">Anyone</option>
+        ${bys.map(b=>`<option ${b===fb?'selected':''}>${b}</option>`).join('')}
+      </select>
+      <select onchange="window._lgTracker=this.value;refreshLog()">
+        <option value="">All trackers</option>
+        ${tracks.map(t=>`<option ${t===ft?'selected':''}>${t}</option>`).join('')}
+      </select>
+      <input type="search" placeholder="Search item, code or details…" value="${window._lgq||''}"
+             oninput="window._lgq=this.value;refreshLog()">
+      ${(fa||fb||ft||q)?`<button class="btn" onclick="clearLogFilters()">Clear</button>`:''}
+      <span style="color:var(--ink-soft);font-size:13px;margin-left:auto">${filtered.length} of ${state.log.length}</span>
+    </div>
+    <div id="logWrap"><table><thead><tr><th>Item</th><th>Activity</th><th>When</th><th>Code</th><th class="qty">Qty</th><th>By</th><th>Tracker</th><th>Details</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="8" style="color:var(--ink-soft)">No activity matches.</td></tr>'}</tbody></table></div>`;
+}
+function refreshLog(){
+  if(currentView!=='log') return;
+  const el = document.getElementById('logWrap');
+  if(!el) return;
+  const tmp = document.createElement('div'); tmp.innerHTML = logView();
+  const fresh = tmp.querySelector('#logWrap');
+  if(fresh) el.innerHTML = fresh.innerHTML;
+}
+function clearLogFilters(){
+  window._lgAct=''; window._lgBy=''; window._lgTracker=''; window._lgq='';
+  render();
 }
 
 function resolveRange(prefix){
@@ -1098,7 +1199,10 @@ function sterilUseTab(pending){
       <td data-label=""><strong>${d.name||d.code}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${d.code}</span></td>
       <td data-label="Used">${dFmt(d.dateUsed)}${d.usedBy?' · '+d.usedBy:''}</td>
       <td class="qty" data-label="Qty">${d.qtyOut}</td>
-      <td data-label="Status">${DSTATUS[d.status]||d.status}</td></tr>`;
+      <td data-label="Status">${DSTATUS[d.status]||d.status}</td>
+      ${can('useedit')?`<td class="rowbtns" data-label="">
+        <button onclick="openUseEdit(${ix})">Edit</button>
+        <button onclick="deleteUse(${ix})" style="color:var(--red)">✕</button></td>`:''}</tr>`;
   }).join('');
   return `
     <div class="toolrow">
@@ -1109,8 +1213,38 @@ function sterilUseTab(pending){
       <button class="btn primary" onclick="logUsed()">Log as used</button>
     </div>
     <div class="sub">Scanning anywhere on this tab logs the instrument instantly (count 1). Items below are waiting for the next dispatch.</div>
-    <table><thead><tr><th>Instrument / Tray</th><th>Used</th><th class="qty">Qty</th><th>Status</th></tr></thead>
-    <tbody>${rows||'<tr><td colspan="4" style="color:var(--ink-soft)">Nothing pending collection.</td></tr>'}</tbody></table>`;
+    <table><thead><tr><th>Instrument / Tray</th><th>Used</th><th class="qty">Qty</th><th>Status</th>${can('useedit')?'<th>Correct</th>':''}</tr></thead>
+    <tbody>${rows||`<tr><td colspan="${can('useedit')?5:4}" style="color:var(--ink-soft)">Nothing pending collection.</td></tr>`}</tbody></table>`;
+}
+
+function openUseEdit(ix){
+  const d = state.dispatch[ix];
+  if(!d || d.status!=='Pending Collection'){ toast('Only items still pending collection can be edited'); return; }
+  const name = prompt('Instrument / tray name:', d.name||'');
+  if(name===null) return;
+  const qtyS = prompt('Quantity:', d.qtyOut||1);
+  if(qtyS===null) return;
+  const qty = Math.max(1, parseInt(qtyS)||1);
+  const codeS = prompt('Code (leave as-is if unsure):', d.code||'');
+  if(codeS===null) return;
+  d.name=name.trim(); d.qtyOut=qty; d.code=codeS.trim();
+  render(); toast('Corrected');
+  if(LIVE && d._row){
+    api({action:'useEdit', row:d._row, name:d.name, code:d.code, qty:d.qtyOut})
+      .then(()=>loadAll()).catch(e=>{toast('Not saved — '+e.message); loadAll();});
+  }
+}
+async function deleteUse(ix){
+  const d = state.dispatch[ix];
+  if(!d || d.status!=='Pending Collection'){ toast('Only pending items can be removed here'); return; }
+  if(!confirm('Remove "'+(d.name||d.code)+'" from the pending list? Use this to undo a logging mistake.')) return;
+  const row = d._row;
+  state.dispatch.splice(ix,1);
+  render(); toast('Removed');
+  if(LIVE && row){
+    try{ await api({action:'useDelete', row}); loadAll(); }
+    catch(e){ toast('Not saved — '+e.message); loadAll(); }
+  }
 }
 function logUsed(codeArg, qtyArg){
   const code = (codeArg || $('#useCode').value).trim();
@@ -2324,7 +2458,7 @@ function refreshValues(){
 async function markObsolete(ix){
   const it = state.items[ix];
   if(!confirm('Move "'+it.name+'" to obsolete stock? It will disappear from all lists and alerts, but stays saved and can be restored anytime.')) return;
-  it.obsolete = true; render();
+  it.obsolete = true; it.obsBy = myName||''; it.obsAt = new Date().toISOString(); render();
   toast('Moved to obsolete: '+it.name);
   if(LIVE && it._row){
     try{ await api({action:'updateItem', tracker:TRACKER_TAB[it.tracker], row:it._row,
@@ -2334,7 +2468,7 @@ async function markObsolete(ix){
 }
 async function restoreItem(ix){
   const it = state.items[ix];
-  it.obsolete = false; render();
+  it.obsolete = false; it.obsBy=''; it.obsAt=''; render();
   toast('Restored: '+it.name);
   if(LIVE && it._row){
     try{ await api({action:'updateItem', tracker:TRACKER_TAB[it.tracker], row:it._row,
@@ -2349,11 +2483,13 @@ function obsoleteView(){
       <td data-label="Tracker">${TRACKER_LABEL[it.tracker]}</td>
       <td data-label="Category">${it.cat||'—'}</td>
       <td class="qty" data-label="Qty">${it.qty}</td>
+      <td data-label="Made obsolete by">${it.obsBy||'—'}</td>
+      <td data-label="When">${it.obsAt?new Date(it.obsAt).toLocaleString('en-GB'):'—'}</td>
       <td class="rowbtns" data-label=""><button onclick="restoreItem(${ix})">Restore</button></td></tr>`).join('');
   return `<h1>Obsolete stock</h1>
     <div class="sub">Dead stock kept out of the way — no alerts, no low-stock lists, hidden from trackers. Restore anytime if needed again. Mark items obsolete from the "Obsolete" button on any tracker row.</div>
-    <table><thead><tr><th>Item</th><th>Tracker</th><th>Category</th><th class="qty">Qty</th><th></th></tr></thead>
-    <tbody>${rows||'<tr><td colspan="5" style="color:var(--ink-soft)">Nothing marked obsolete.</td></tr>'}</tbody></table>`;
+    <table><thead><tr><th>Item</th><th>Tracker</th><th>Category</th><th class="qty">Qty</th><th>Made obsolete by</th><th>When</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="7" style="color:var(--ink-soft)">Nothing marked obsolete.</td></tr>'}</tbody></table>`;
 }
 
 /* ---------------- stores & transfers — admin only ---------------- */
@@ -2475,6 +2611,279 @@ async function doMoveStore(){
     try{ await api({action:'moveStore', tracker:TRACKER_TAB[t], rows, toStore:dest}); }
     catch(err){ toast('Not saved — '+err.message); loadAll(); }
   }
+}
+
+/* ---------------- gas room daily checks ---------------- */
+state.gasChecks = state.gasChecks || [];
+const gas = {   // today's form state (kept outside render so typing survives)
+  o2L:'', o2R:'', o2P:'', o2Use:'', o2Deliv:false,
+  airL:'', airR:'', airP:'', airUse:'', airDeliv:false, airRecord:false,
+  heT:null, heF:null, heE:null,
+  trT:null, trF:null, trE:null, trDate:'',
+  pump:'', pumpStatus:'Normal', af1:false, af2:false, notes:''
+};
+
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function gasDoneToday(){
+  return state.gasChecks.some(g=>String(g.date).slice(0,10)===todayISO());
+}
+function lastGas(){ return state.gasChecks.length ? state.gasChecks[state.gasChecks.length-1] : null; }
+function gasPrefill(){
+  const l = lastGas();
+  if(!l) return;
+  if(gas.heT==null){ gas.heT=l.heT; gas.heF=l.heF; gas.heE=l.heE; }
+  if(gas.trT==null){ gas.trT=l.trT; gas.trF=l.trF; gas.trE=l.trE; gas.trDate=l.trDate?String(l.trDate).slice(0,10):''; }
+  if(!gas.o2Use) gas.o2Use = l.o2Use||'';
+  if(!gas.airUse) gas.airUse = l.airUse||'';
+  if(!gas.pump) gas.pump = l.pump||'1';
+}
+
+function digCls(v, full){
+  const n = Number(v);
+  if(v==='' || isNaN(n)) return '';
+  if(n >= full*0.6) return 'ok';
+  if(n >= 25) return 'warn';
+  return 'crit';
+}
+function paintDig(id, full){
+  const el = document.getElementById(id);
+  if(el) el.className = 'digital ' + digCls(el.value, full);
+}
+function anyLow(a,b){
+  const x=Number(a), y=Number(b);
+  return (a!=='' && !isNaN(x) && x<25) || (b!=='' && !isNaN(y) && y<25);
+}
+function paintDeliv(prefix){
+  const el = document.getElementById(prefix+'DelivBox');
+  if(!el) return;
+  const low = prefix==='o2' ? anyLow(gas.o2L,gas.o2R) : anyLow(gas.airL,gas.airR);
+  const on = prefix==='o2' ? gas.o2Deliv : gas.airDeliv;
+  el.className = 'deliv' + (on?' on':(low?' needed':''));
+  el.querySelector('.dtxt').textContent = on ? '✓ Delivery slot booked'
+    : low ? '⚠ Bank low / empty — tick when delivery slot is booked' : 'Delivery slot booked (tick if needed)';
+}
+
+function manifoldHTML(prefix, title, full, pipeNominal, dueBadge, collapsed){
+  const g = gas;
+  const L = prefix==='o2'?g.o2L:g.airL, R = prefix==='o2'?g.o2R:g.airR, P = prefix==='o2'?g.o2P:g.airP;
+  const use = prefix==='o2'?g.o2Use:g.airUse;
+  const body = `
+    <div class="manifold">
+      <div class="bank ${use==='Left'?'inuse':''}" id="${prefix}BankL">
+        <div class="bl">Left bank ${use==='Left'?'· IN USE':''}</div>
+        <input class="digital ${digCls(L,full)}" id="${prefix}L" inputmode="numeric" placeholder="---" maxlength="3"
+          value="${L}" oninput="gas.${prefix==='o2'?'o2L':'airL'}=this.value;paintDig('${prefix}L',${full});paintDeliv('${prefix}')">
+        <div class="bankpick">
+          <button type="button" class="${use==='Left'?'on':''}" onclick="setBank('${prefix}','Left')">IN USE</button>
+          <button type="button" class="${use==='Right'?'on':''}" onclick="setBank('${prefix}','Right')" style="border-left:1px solid #37464B">STANDBY</button>
+        </div>
+      </div>
+      <div class="pipeline">
+        <div class="bl">Pipeline (bar)</div>
+        <input class="digital ok" id="${prefix}P" inputmode="decimal" placeholder="${pipeNominal}" maxlength="4"
+          value="${P}" oninput="gas.${prefix==='o2'?'o2P':'airP'}=this.value">
+        <div class="bl">nominal ~${pipeNominal}</div>
+      </div>
+      <div class="bank ${use==='Right'?'inuse':''}" id="${prefix}BankR">
+        <div class="bl">Right bank ${use==='Right'?'· IN USE':''}</div>
+        <input class="digital ${digCls(R,full)}" id="${prefix}R" inputmode="numeric" placeholder="---" maxlength="3"
+          value="${R}" oninput="gas.${prefix==='o2'?'o2R':'airR'}=this.value;paintDig('${prefix}R',${full});paintDeliv('${prefix}')">
+        <div class="bankpick">
+          <button type="button" class="${use==='Right'?'on':''}" onclick="setBank('${prefix}','Right')">IN USE</button>
+          <button type="button" class="${use==='Left'?'on':''}" onclick="setBank('${prefix}','Left')" style="border-left:1px solid #37464B">STANDBY</button>
+        </div>
+      </div>
+    </div>
+    <div class="deliv" id="${prefix}DelivBox" onclick="toggleDeliv('${prefix}')">
+      <span style="font-size:18px">🚚</span><span class="dtxt"></span>
+    </div>`;
+  return `<div class="gaspanel">
+    <h2><span class="led green"></span>${title} ${dueBadge||''}</h2>
+    ${collapsed ? `<div id="${prefix}Collapsed">
+        <button class="btn" onclick="gas.airRecord=true;render()">Not due today — tap to record anyway</button>
+      </div>` : body}
+  </div>`;
+}
+function setBank(prefix, side){
+  if(prefix==='o2') gas.o2Use = side; else gas.airUse = side;
+  render();
+}
+function toggleDeliv(prefix){
+  if(prefix==='o2') gas.o2Deliv = !gas.o2Deliv; else gas.airDeliv = !gas.airDeliv;
+  paintDeliv(prefix);
+}
+function stepperHTML(id, label, field){
+  return `<div class="fld"><label>${label}</label>
+    <div class="stepper">
+      <button type="button" onclick="gasStep('${field}',-1,'${id}')">−</button>
+      <input id="${id}" inputmode="numeric" value="${gas[field]==null?'':gas[field]}"
+        oninput="gas.${field}=this.value===''?null:Math.max(0,parseInt(this.value)||0)">
+      <button type="button" onclick="gasStep('${field}',1,'${id}')">＋</button>
+    </div></div>`;
+}
+function gasStep(field, d, id){
+  gas[field] = Math.max(0, (Number(gas[field])||0) + d);
+  const el = document.getElementById(id);
+  if(el) el.value = gas[field];
+}
+
+function gasView(){
+  gasPrefill();
+  const isMon = new Date().getDay()===1;
+  const airDue = isMon || gas.airRecord;
+  const done = gasDoneToday();
+  const l = lastGas();
+  return `
+    <h1>Gas room — daily checks</h1>
+    <div class="sub">One walk-through: oxygen · medical air (Mondays) · helium · trolley O₂ · vacuum plant · theatre airflow.</div>
+    ${done?`<div class="gasdone"><span class="led green"></span>Today's check is already recorded${l&&l.by?' by '+l.by:''} — submitting again adds a second entry.</div>`:''}
+
+    ${manifoldHTML('o2','Oxygen manifold — big cylinders (3 + 3)',142,'4.2','',false)}
+    ${manifoldHTML('air','Medical air manifold','108','7.3',
+        `<span class="due">${isMon?'Due today (Monday)':'Weekly · Mondays'}</span>`, !airDue)}
+
+    <div class="gaspanel">
+      <h2><span class="led green"></span>Helium cylinders (Renuvion)</h2>
+      <div class="steprow">
+        ${stepperHTML('heT','Total on site','heT')}
+        ${stepperHTML('heF','Full','heF')}
+        ${stepperHTML('heE','Empty','heE')}
+      </div>
+    </div>
+
+    <div class="gaspanel">
+      <h2><span class="led green"></span>Trolley oxygen cylinders (CD size)</h2>
+      <div class="steprow">
+        ${stepperHTML('trT','Total on site','trT')}
+        ${stepperHTML('trF','Full','trF')}
+        ${stepperHTML('trE','Empty','trE')}
+        <div class="fld"><label>Next delivery</label>
+          <input type="date" value="${gas.trDate||''}" oninput="gas.trDate=this.value"
+            style="height:46px;padding:0 12px;border:1px solid var(--line);border-radius:10px;font-size:15px"></div>
+      </div>
+    </div>
+
+    <div class="gaspanel">
+      <h2><span class="led ${gas.pumpStatus==='Normal'?'green':gas.pumpStatus==='Both fault'?'red':'amber'}"></span>Vacuum plant</h2>
+      <div class="steprow">
+        <div class="fld"><label>Duty pump</label>
+          <div class="bankpick" style="border-color:var(--line);width:180px">
+            <button type="button" class="${gas.pump==='1'?'on':''}" style="background:${gas.pump==='1'?'':'var(--mist)'};color:${gas.pump==='1'?'':'var(--ink-soft)'}" onclick="gas.pump='1';render()">PUMP 1</button>
+            <button type="button" class="${gas.pump==='2'?'on':''}" style="background:${gas.pump==='2'?'':'var(--mist)'};color:${gas.pump==='2'?'':'var(--ink-soft)'};border-left:1px solid var(--line)" onclick="gas.pump='2';render()">PUMP 2</button>
+          </div></div>
+        <div class="fld"><label>Plant status</label>
+          <select onchange="gas.pumpStatus=this.value;render()"
+            style="height:46px;padding:0 12px;border:1px solid var(--line);border-radius:10px;font-size:15px">
+            <option ${gas.pumpStatus==='Normal'?'selected':''}>Normal</option>
+            <option ${gas.pumpStatus==='Pump 1 fault — Pump 2 running'?'selected':''}>Pump 1 fault — Pump 2 running</option>
+            <option ${gas.pumpStatus==='Pump 2 fault — Pump 1 running'?'selected':''}>Pump 2 fault — Pump 1 running</option>
+            <option ${gas.pumpStatus==='Both fault'?'selected':''}>Both fault</option>
+          </select></div>
+      </div>
+    </div>
+
+    <div class="gaspanel">
+      <h2><span class="led ${gas.af1&&gas.af2?'green':'amber'}"></span>Theatre airflow — end of day</h2>
+      <div class="steprow">
+        <div class="bigtoggle ${gas.af1?'on':''}" onclick="gas.af1=!gas.af1;render()">
+          <div class="tsw"></div><div><strong>Theatre 1</strong><div style="font-size:12px;color:var(--ink-soft)">Airflow switched OFF</div></div></div>
+        <div class="bigtoggle ${gas.af2?'on':''}" onclick="gas.af2=!gas.af2;render()">
+          <div class="tsw"></div><div><strong>Theatre 2</strong><div style="font-size:12px;color:var(--ink-soft)">Airflow switched OFF</div></div></div>
+      </div>
+    </div>
+
+    <div class="toolrow">
+      <input type="text" placeholder="Notes (optional)" value="${gas.notes||''}" oninput="gas.notes=this.value"
+        style="flex:1;min-width:180px;padding:11px 13px;border:1px solid var(--line);border-radius:10px">
+      <button class="btn primary" style="padding:13px 26px;font-size:15px" onclick="saveGasCheck()">✓ Save today's checks</button>
+    </div>
+
+    ${gasConsumptionHTML()}
+    ${gasHistoryHTML()}`;
+}
+
+async function saveGasCheck(){
+  if(gas.o2L==='' && gas.o2R===''){ toast('Enter the oxygen bank readings first'); return; }
+  if(!gas.o2Use){ toast('Select which oxygen bank is in use'); return; }
+  const fields = {Date: todayISO(), By: myName||'Unknown',
+    O2_LeftBank:gas.o2L, O2_RightBank:gas.o2R, O2_Pipeline:gas.o2P, O2_InUseBank:gas.o2Use,
+    O2_DeliveryBooked: gas.o2Deliv?'Yes':'',
+    Air_LeftBank:gas.airL, Air_RightBank:gas.airR, Air_Pipeline:gas.airP, Air_InUseBank:gas.airUse,
+    Air_DeliveryBooked: gas.airDeliv?'Yes':'',
+    Helium_Total:gas.heT??'', Helium_Full:gas.heF??'', Helium_Empty:gas.heE??'',
+    TrolleyO2_Total:gas.trT??'', TrolleyO2_Full:gas.trF??'', TrolleyO2_Empty:gas.trE??'',
+    TrolleyO2_NextDelivery:gas.trDate||'',
+    Vacuum_DutyPump:gas.pump, Vacuum_Status:gas.pumpStatus,
+    Airflow_TH1_Off: gas.af1?'Yes':'No', Airflow_TH2_Off: gas.af2?'Yes':'No', Notes:gas.notes||''};
+  state.gasChecks.push({date:todayISO(), by:fields.By,
+    o2L:gas.o2L, o2R:gas.o2R, o2P:gas.o2P, o2Use:gas.o2Use, o2Deliv:gas.o2Deliv,
+    airL:gas.airL, airR:gas.airR, airP:gas.airP, airUse:gas.airUse, airDeliv:gas.airDeliv,
+    heT:gas.heT, heF:gas.heF, heE:gas.heE, trT:gas.trT, trF:gas.trF, trE:gas.trE, trDate:gas.trDate,
+    pump:gas.pump, pumpStatus:gas.pumpStatus, af1:gas.af1, af2:gas.af2});
+  toast('Gas room checks saved ✓');
+  ['o2L','o2R','o2P','airL','airR','airP','notes'].forEach(k=>gas[k]='');
+  gas.o2Deliv=false; gas.airDeliv=false; gas.airRecord=false; gas.af1=false; gas.af2=false;
+  render();
+  if(LIVE){
+    try{ await api({action:'gasCheckAdd', fields}); loadAll(); }
+    catch(err){ toast('Not saved to sheet — '+err.message); }
+  }
+}
+
+/* --- monthly consumption from daily readings --- */
+function gasConsumption(prefix, full){
+  // sum of pressure drops per bank between consecutive checks; a rise >50 = fresh cylinders (changeover)
+  const byMonth = {};
+  const rows = state.gasChecks
+    .filter(g=>g[prefix+'L']!=='' || g[prefix+'R']!=='')
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  for(let i=1;i<rows.length;i++){
+    const m = String(rows[i].date).slice(0,7);
+    byMonth[m] = byMonth[m] || {drop:0, swaps:0};
+    ['L','R'].forEach(s=>{
+      const prev = Number(rows[i-1][prefix+s]), cur = Number(rows[i][prefix+s]);
+      if(isNaN(prev)||isNaN(cur)) return;
+      if(cur < prev) byMonth[m].drop += prev-cur;
+      else if(cur - prev > 50) byMonth[m].swaps++;
+    });
+  }
+  return Object.keys(byMonth).sort().reverse().slice(0,6).map(m=>({month:m,
+    drop:byMonth[m].drop, swaps:byMonth[m].swaps,
+    cyl: Math.round(byMonth[m].drop / full * 3 * 10)/10 }));   // 3 cylinders per bank
+}
+function gasConsumptionHTML(){
+  const o2 = gasConsumption('o2', 142), air = gasConsumption('air', 108);
+  if(!o2.length && !air.length) return '';
+  const fm = m => new Date(m+'-01').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  const rows = [...new Set([...o2.map(x=>x.month), ...air.map(x=>x.month)])].sort().reverse().map(m=>{
+    const a = o2.find(x=>x.month===m), b = air.find(x=>x.month===m);
+    return `<tr><td data-label="">${fm(m)}</td>
+      <td class="qty" data-label="O₂ bar used">${a?a.drop:'—'}</td>
+      <td class="qty" data-label="O₂ est. cylinders">${a?'≈ '+a.cyl:'—'}</td>
+      <td class="qty" data-label="O₂ changeovers">${a?a.swaps:'—'}</td>
+      <td class="qty" data-label="Air bar used">${b?b.drop:'—'}</td>
+      <td class="qty" data-label="Air est. cylinders">${b?'≈ '+b.cyl:'—'}</td></tr>`;
+  }).join('');
+  return `<h1 style="font-size:16px;margin-top:24px">Monthly consumption — big cylinders</h1>
+    <div class="sub">Calculated from the recorded bank pressures (a pressure rise of 50+ counts as a cylinder changeover). Estimated cylinders = pressure used ÷ full pressure × 3 per bank.</div>
+    <table><thead><tr><th>Month</th><th class="qty">O₂ bar used</th><th class="qty">O₂ ≈ cylinders</th>
+      <th class="qty">O₂ changeovers</th><th class="qty">Air bar used</th><th class="qty">Air ≈ cylinders</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+function gasHistoryHTML(){
+  const rows = [...state.gasChecks].reverse().slice(0,14).map(g=>`<tr>
+    <td data-label="">${new Date(g.date).toLocaleDateString('en-GB')} · ${g.by||''}</td>
+    <td class="qty" data-label="O₂ L/R">${g.o2L||'—'} / ${g.o2R||'—'}</td>
+    <td class="qty" data-label="Air L/R">${g.airL!==''&&g.airL!=null?g.airL+' / '+g.airR:'—'}</td>
+    <td class="qty" data-label="He F/E">${g.heF??'—'} / ${g.heE??'—'}</td>
+    <td class="qty" data-label="Trolley F/E">${g.trF??'—'} / ${g.trE??'—'}</td>
+    <td data-label="Pumps">${g.pumpStatus||'—'} (P${g.pump||'?'})</td>
+    <td data-label="Airflow off">${g.af1&&g.af2?'✓ Both':g.af1?'TH1 only':g.af2?'TH2 only':'—'}</td></tr>`).join('');
+  if(!rows) return '';
+  return `<h1 style="font-size:16px;margin-top:24px">Recent checks</h1>
+    <table><thead><tr><th>Date</th><th class="qty">O₂ L/R</th><th class="qty">Air L/R</th>
+      <th class="qty">He full/empty</th><th class="qty">Trolley full/empty</th><th>Vacuum</th><th>Airflow off</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
 }
 
 /* ---------------- assets (admin only) ---------------- */
@@ -2670,6 +3079,7 @@ function render(){
   else if(v==='obsolete') m.innerHTML = obsoleteView();
   else if(v==='stores') m.innerHTML = storesView();
   else if(v==='assets') m.innerHTML = assetsView();
+  else if(v==='gas'){ m.innerHTML = gasView(); paintDeliv('o2'); paintDeliv('air'); }
   else m.innerHTML = trackerView(v);
 }
 
@@ -2700,7 +3110,8 @@ function mapItem(tab, r){
     cost: r.UnitCost!=null && r.UnitCost!=='' ? Number(r.UnitCost) : null,
     expiry: r.Expiry ? String(r.Expiry).slice(0,10) : null,
     batch: r.Batch||'', status: r.Status||'',
-    obsolete: String(r.Obsolete||'').toLowerCase()==='yes'};
+    obsolete: String(r.Obsolete||'').toLowerCase()==='yes',
+    obsBy: r.ObsoleteBy||'', obsAt: r.ObsoleteAt||''};
 }
 
 async function loadAll(){
@@ -2745,6 +3156,20 @@ async function loadAll(){
       returnedBy:d.ReturnedBy||'', status:st};});
     state.alerts = data.alerts.map(a=>({_row:a._row, ts:a.Timestamp, type:a.Type,
       item:a.Item, detail:a.Detail, status:a.Status, tracker:a.Tracker}));
+    state.gasChecks = (data.gasChecks||[]).map(g=>({date:g.Date?String(g.Date).slice(0,10):'', by:g.By||'',
+      o2L:g.O2_LeftBank??'', o2R:g.O2_RightBank??'', o2P:g.O2_Pipeline??'', o2Use:g.O2_InUseBank||'',
+      o2Deliv:g.O2_DeliveryBooked==='Yes',
+      airL:g.Air_LeftBank??'', airR:g.Air_RightBank??'', airP:g.Air_Pipeline??'', airUse:g.Air_InUseBank||'',
+      airDeliv:g.Air_DeliveryBooked==='Yes',
+      heT:g.Helium_Total===''||g.Helium_Total==null?null:Number(g.Helium_Total),
+      heF:g.Helium_Full===''||g.Helium_Full==null?null:Number(g.Helium_Full),
+      heE:g.Helium_Empty===''||g.Helium_Empty==null?null:Number(g.Helium_Empty),
+      trT:g.TrolleyO2_Total===''||g.TrolleyO2_Total==null?null:Number(g.TrolleyO2_Total),
+      trF:g.TrolleyO2_Full===''||g.TrolleyO2_Full==null?null:Number(g.TrolleyO2_Full),
+      trE:g.TrolleyO2_Empty===''||g.TrolleyO2_Empty==null?null:Number(g.TrolleyO2_Empty),
+      trDate:g.TrolleyO2_NextDelivery||'',
+      pump:g.Vacuum_DutyPump?String(g.Vacuum_DutyPump):'', pumpStatus:g.Vacuum_Status||'',
+      af1:g.Airflow_TH1_Off==='Yes', af2:g.Airflow_TH2_Off==='Yes'}));
     state.assets = (data.assets||[]).map(a=>({_row:a._row, name:a.Name||'', serial:a.SerialNumber?String(a.SerialNumber):'',
       func:a.Function||'', supplier:a.Supplier||'', phone:a.SupplierContact?String(a.SupplierContact):'',
       loc:a.Location||'', last:a.LastMaintenance||null, next:a.NextMaintenanceDue||null,
@@ -2776,9 +3201,9 @@ try { session = JSON.parse(localStorage.getItem('bollin_session')||'null'); } ca
 if(session) myName = session.displayName || '';
 
 const PERMS = {
-  admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:1, stores:1, assets:1},
-  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:0, stores:0, assets:0},
-  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0, instr:0, reports:0, obsolete:0, stores:0, assets:0}
+  admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:1, stores:1, assets:1, useedit:1},
+  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:0, stores:0, assets:0, useedit:0},
+  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0, instr:0, reports:0, obsolete:0, stores:0, assets:0, useedit:0}
 };
 function role(){ return LIVE ? (session ? session.role : null) : 'admin'; }
 function can(p){ const r = role(); return !!(r && PERMS[r] && PERMS[r][p]); }

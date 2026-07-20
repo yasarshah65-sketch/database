@@ -24,6 +24,7 @@ function doGet(e) {
 // action -> minimum role. Roles: common < staff < admin
 const ACTION_ROLE = {
   getAll:'common', move:'common', link:'common', useLog:'common', request:'common',
+  gasCheckAdd:'common',
   getTransactions:'staff',
   changePassword:'common',
   stocktake:'staff', respond:'staff', ack:'staff',
@@ -32,7 +33,8 @@ const ACTION_ROLE = {
   instrumentAdd:'staff',
   addItem:'admin', updateItem:'admin', setBarcodes:'admin',
   moveStore:'admin', storeAdd:'admin', storeRemove:'admin', clearBarcode:'admin',
-  assetAdd:'admin', assetUpdate:'admin'
+  assetAdd:'admin', assetUpdate:'admin',
+  useEdit:'admin', useDelete:'admin'
 };
 const ROLE_RANK = { common: 0, staff: 1, admin: 2 };
 
@@ -77,6 +79,9 @@ function doPost(e) {
       case 'clearBarcode':return json_(clearBarcode_(req));
       case 'assetAdd':    return json_(assetAdd_(req));
       case 'assetUpdate': return json_(assetUpdate_(req));
+      case 'gasCheckAdd': return json_(gasCheckAdd_(req));
+      case 'useEdit':     return json_(useEdit_(req));
+      case 'useDelete':   return json_(useDelete_(req));
       case 'ack':       return json_(ackAlert_(req));
       case 'stocktake': return json_(stocktake_(req));
       default:          return json_({ ok: false, error: 'Unknown action' });
@@ -197,6 +202,8 @@ function setBarcodes_(q) {
       done++;
     } catch (err) { errors.push(en.code + ': ' + err); }
   });
+  logAct_('Barcodes generated', {tracker: (q.entries && q.entries[0] && q.entries[0].tracker) || '',
+    qty: done, note: done + ' barcode label(s) assigned'});
   return { ok: true, done: done, errors: errors.slice(0, 10) };
 }
 
@@ -242,6 +249,7 @@ function getAll_(session) {
     barcodeLinks: readTab_('BarcodeLinks'),
     stores: readTab_('Stores'),
     assets: (session && session.role === 'admin') ? readTab_('Assets') : [],
+    gasChecks: readTab_('GasChecks').slice(-180),
     serverTime: new Date().toISOString()
   };
 }
@@ -287,6 +295,8 @@ function link_(q) {
   const it = findItem_(q.tracker, q.code);
   const cBar = col_(it.head, 'Barcode');
   if (!it.vals[cBar - 1]) it.sh.getRange(it.row, cBar).setValue(q.barcode);
+  logAct_('Barcode linked', {tracker: q.tracker, code: q.code,
+    name: String(it.vals[col_(it.head, 'Name') - 1] || ''), note: 'Scanned barcode ' + q.barcode + ' linked'});
   return { ok: true };
 }
 
@@ -338,7 +348,7 @@ function updateItem_(q) {
     sh.getRange(q.row, c + 1).setValue(v);
   });
   logAct_('Item edited', {tracker: q.tracker, code: (q.fields && q.fields.Code) || '',
-    name: (q.fields && q.fields.Name) || '', note: 'Item details updated'});
+    name: (q.fields && q.fields.Name) || '', note: q._changeNote || 'Item details updated'});
   return { ok: true };
 }
 
@@ -434,6 +444,33 @@ function useLog_(q) {
   (q.lines || []).forEach(l => logAct_('Instrument used', {tracker: 'Sterilisation',
     code: l.code, name: l.name, qty: l.qty, by: q.by}));
   return { ok: true, added: rows.length };
+}
+
+function useEdit_(q) {
+  // q: {row, name, code, qty} — only allowed while still Pending Collection
+  const d = dlSheet_();
+  const st = String(d.sh.getRange(q.row, d.col('Status')).getValue() || '');
+  if (st !== 'Pending Collection')
+    return { ok: false, error: 'This item has already been dispatched and can no longer be edited' };
+  if (q.name !== undefined) d.sh.getRange(q.row, d.col('ItemName')).setValue(q.name);
+  if (q.code !== undefined) d.sh.getRange(q.row, d.col('Code')).setValue(q.code);
+  if (q.qty !== undefined) d.sh.getRange(q.row, d.col('CountOut')).setValue(Math.max(1, Number(q.qty) || 1));
+  logAct_('Used item edited', {tracker: 'Sterilisation', code: q.code || '', name: q.name || '',
+    qty: q.qty, note: 'Corrected before dispatch'});
+  return { ok: true };
+}
+
+function useDelete_(q) {
+  // q: {row} — only allowed while still Pending Collection
+  const d = dlSheet_();
+  const st = String(d.sh.getRange(q.row, d.col('Status')).getValue() || '');
+  if (st !== 'Pending Collection')
+    return { ok: false, error: 'This item has already been dispatched and cannot be removed here' };
+  const nm = d.sh.getRange(q.row, d.col('ItemName')).getValue();
+  d.sh.deleteRow(q.row);
+  logAct_('Used item removed', {tracker: 'Sterilisation', name: String(nm || ''),
+    note: 'Removed before dispatch'});
+  return { ok: true };
 }
 
 function dispatchAssign_(q) {
@@ -547,6 +584,9 @@ function dispatchAdd_(q) {
   ]);
   if (!rows.length) return { ok: false, error: 'No lines' };
   sh.getRange(sh.getLastRow() + 1, 1, rows.length, DISPATCH_HEADERS.length).setValues(rows);
+  logAct_('Instruments dispatched', {tracker: 'Sterilisation', code: q.ref || '',
+    name: 'Dispatch ' + (q.ref || ''), qty: rows.length, by: q.by,
+    note: rows.length + ' line(s) sent to CSSD'});
   return { ok: true, added: rows.length };
 }
 
@@ -562,6 +602,10 @@ function dispatchReturn_(q) {
   sh.getRange(q.row, get('ReturnedBy')).setValue(q.by || '');
   sh.getRange(q.row, get('CountIn')).setValue(qtyIn);
   sh.getRange(q.row, get('Status')).setValue(qtyIn >= qtyOut ? 'Returned' : 'Partial');
+  logAct_('Instruments received', {tracker: 'Sterilisation',
+    name: String(sh.getRange(q.row, get('ItemName')).getValue() || ''),
+    code: String(sh.getRange(q.row, get('Code')).getValue() || ''),
+    qty: qtyIn, by: q.by, note: qtyIn >= qtyOut ? 'Fully returned' : 'Partial return'});
   return { ok: true };
 }
 
@@ -569,6 +613,70 @@ function dispatchReturn_(q) {
 /** Run once from the editor after pasting this version (Run ▶ migrate). */
 function migrate() {
   const ss = ss_();
+
+  // 0. Core tabs — create any that don't exist yet (fresh/blank sheet, e.g. staging).
+  //    All guarded by "if missing", so this is a no-op on an established sheet.
+  const HEAD_STYLE = r => r.setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+  function ensureTab_(name, headers, seedRows) {
+    let s = ss.getSheetByName(name);
+    if (!s) {
+      s = ss.insertSheet(name);
+      HEAD_STYLE(s.getRange(1, 1, 1, headers.length).setValues([headers]));
+      s.setFrozenRows(1);
+      if (seedRows && seedRows.length)
+        s.getRange(2, 1, seedRows.length, headers.length).setValues(seedRows);
+    }
+    return s;
+  }
+  const ITEM_HEADERS = ['Code', 'Barcode', 'Name', 'Category', 'Supplier', 'Location',
+    'Unit', 'Qty', 'ReorderLevel', 'UnitCost', 'Expiry', 'Batch', 'Notes', 'Status',
+    'Obsolete', 'ObsoleteBy', 'ObsoleteAt'];
+  // five tracker tabs
+  ITEM_TABS.forEach(t => {
+    if (t === 'Instruments') {
+      ensureTab_('Instruments', ['Code', 'Barcode', 'Name', 'Category', 'Supplier', 'Location',
+        'Unit', 'Qty', 'ReorderLevel', 'UnitCost', 'Expiry', 'Batch', 'Notes', 'Status',
+        'QtyInTray', 'CyclesToDate', 'Obsolete', 'ObsoleteBy', 'ObsoleteAt']);
+    } else {
+      ensureTab_(t, ITEM_HEADERS);
+    }
+  });
+  // supporting tabs
+  ensureTab_('Transactions', ['Timestamp', 'Direction', 'Tracker', 'Code', 'Name', 'Qty',
+    'By', 'Batch', 'Expiry', 'Note', 'Activity']);
+  ensureTab_('Requests', ['Timestamp', 'By', 'Item', 'Qty', 'Size', 'Status',
+    'HandledBy', 'DateResponded', 'Remarks']);
+  ensureTab_('BarcodeLinks', ['Barcode', 'Tracker', 'Code']);
+  ensureTab_('Alerts', ['Timestamp', 'Tracker', 'Code', 'Name', 'Level', 'Qty',
+    'ReorderLevel', 'Acknowledged', 'AckBy', 'AckAt', 'Escalated']);
+  ensureTab_('Stocktakes', ['Timestamp', 'Type', 'Tracker', 'Store', 'By', 'Code', 'Name',
+    'Expected', 'Counted', 'Variance', 'UnitCost', 'VarianceValue']);
+  // Settings with the keys the app expects, seeded blank
+  if (!ss.getSheetByName('Settings')) {
+    const setSheet = ensureTab_('Settings', ['Key', 'Value', 'Description']);
+    setSheet.getRange(2, 1, 12, 3).setValues([
+      ['app_name', 'Bollin Clinic Inventory', 'Name shown in emails'],
+      ['alert_email', '', 'Low/out/expiry alert recipient(s), comma-separated'],
+      ['escalation_email', '', 'Second-level recipient if an alert is not acknowledged'],
+      ['ack_hours', '48', 'Hours before an unacknowledged alert escalates'],
+      ['expiry_days', '90', 'Warn when items expire within this many days'],
+      ['slow_days', '', 'Optional: days without movement to flag slow stock'],
+      ['activity_email', '', 'Midnight activity-log recipient(s), comma-separated'],
+      ['request_email', '', 'Notified when a new request is submitted, comma-separated'],
+      ['implant_email', '', 'Notified when a new implant order is created, comma-separated'],
+      ['', '', ''], ['', '', ''], ['', '', '']
+    ]);
+  }
+  // Users tab seeded with three starter accounts (so you can sign in immediately)
+  if (!ss.getSheetByName('Users')) {
+    const uSheet = ensureTab_('Users', USER_HEADERS);
+    uSheet.getRange(2, 1, 3, USER_HEADERS.length).setValues([
+      ['yasar', 'ChangeMe123', 'admin', 'Yasar', 'yes'],
+      ['stockteam', 'ChangeMe123', 'staff', 'Stock Team', 'yes'],
+      ['scrubs', 'ChangeMe123', 'common', 'Scrub Team', 'yes']
+    ]);
+  }
+
   // 1. Implants tab (create, or append any missing columns)
   let imp = ss.getSheetByName('Implants');
   if (!imp) {
@@ -634,15 +742,18 @@ function migrate() {
       'Type an initial password in the Password column — it is replaced by a secure hash the first time the person signs in. Active: yes/no.')
       .setFontStyle('italic').setFontSize(9);
   }
-  // 1d2. Obsolete column on every tracker tab
+  // 1d2. Obsolete columns on every tracker tab
   ITEM_TABS.forEach(t => {
     const shT = ss.getSheetByName(t);
     if (!shT) return;
-    const haveO = shT.getRange(1, 1, 1, Math.max(shT.getLastColumn(), 1)).getValues()[0].map(String);
-    if (haveO.indexOf('Obsolete') < 0) {
-      shT.getRange(1, shT.getLastColumn() + 1).setValue('Obsolete')
-        .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
-    }
+    let haveO = shT.getRange(1, 1, 1, Math.max(shT.getLastColumn(), 1)).getValues()[0].map(String);
+    ['Obsolete', 'ObsoleteBy', 'ObsoleteAt'].forEach(hd => {
+      if (haveO.indexOf(hd) < 0) {
+        shT.getRange(1, shT.getLastColumn() + 1).setValue(hd)
+          .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+        haveO.push(hd);
+      }
+    });
   });
   // 1d3. Stores tab (managed store list)
   if (!ss.getSheetByName('Stores')) {
@@ -660,6 +771,13 @@ function migrate() {
     asx.getRange(1, 1, 1, ASSET_HEADERS.length).setValues([ASSET_HEADERS])
       .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
     asx.setFrozenRows(1);
+  }
+  // 1d5. GasChecks tab
+  if (!ss.getSheetByName('GasChecks')) {
+    const gcx = ss.insertSheet('GasChecks');
+    gcx.getRange(1, 1, 1, GASCHECK_HEADERS.length).setValues([GASCHECK_HEADERS])
+      .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+    gcx.setFrozenRows(1);
   }
   // 1e. Transactions tab: ensure Activity column
   const tx = ss.getSheetByName('Transactions');
@@ -713,6 +831,8 @@ function ackAlert_(q) {
   sh.getRange(q.row, 7).setValue('Acknowledged');
   sh.getRange(q.row, 8).setValue(q.by || '');
   sh.getRange(q.row, 9).setValue(new Date());
+  logAct_('Alert acknowledged', {tracker: String(sh.getRange(q.row, 2).getValue() || ''),
+    name: String(sh.getRange(q.row, 4).getValue() || ''), by: q.by});
   return { ok: true };
 }
 
@@ -769,6 +889,35 @@ function clearBarcode_(q) {
   }
   logAct_('Barcode removed', {tracker: q.tracker, code: q.barcode || '', note: 'Label cleared for regeneration'});
   return { ok: true };
+}
+
+/* ============================ gas room checks ============================ */
+
+const GASCHECK_HEADERS = ['Timestamp','Date','By',
+  'O2_LeftBank','O2_RightBank','O2_Pipeline','O2_InUseBank','O2_DeliveryBooked',
+  'Air_LeftBank','Air_RightBank','Air_Pipeline','Air_InUseBank','Air_DeliveryBooked',
+  'Helium_Total','Helium_Full','Helium_Empty',
+  'TrolleyO2_Total','TrolleyO2_Full','TrolleyO2_Empty','TrolleyO2_NextDelivery',
+  'Vacuum_DutyPump','Vacuum_Status','Airflow_TH1_Off','Airflow_TH2_Off','Notes'];
+
+function gasCheckAdd_(q) {
+  const sh = ss_().getSheetByName('GasChecks');
+  if (!sh) return { ok: false, error: 'GasChecks tab missing — run migrate()' };
+  const f = q.fields || {};
+  f.Timestamp = new Date();
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  sh.appendRow(head.map(h => {
+    let v = f[h];
+    if (v === undefined || v === null) return '';
+    if ((h === 'Date' || h === 'TrolleyO2_NextDelivery') && v) return new Date(v);
+    return v;
+  }));
+  logAct_('Gas room check', {tracker: 'Gas Room', by: f.By,
+    name: 'Daily check', note:
+      'O2 L' + (f.O2_LeftBank ?? '—') + '/R' + (f.O2_RightBank ?? '—') +
+      (f.Air_LeftBank !== undefined && f.Air_LeftBank !== '' ? ' · Air L' + f.Air_LeftBank + '/R' + (f.Air_RightBank ?? '—') : '') +
+      ' · Pumps ' + (f.Vacuum_Status || '—')});
+  return { ok: true, row: sh.getLastRow() };
 }
 
 /* =============================== assets ================================= */
