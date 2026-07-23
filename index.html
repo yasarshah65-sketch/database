@@ -103,6 +103,7 @@
   nav a[data-view=values]{--icn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3v18h18'/%3E%3Cpath d='M7 14l4-4 3 3 5-6'/%3E%3C/svg%3E")}
   nav a[data-view=stores]{--icn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h13l-3.2-3.2M20 17H7l3.2 3.2'/%3E%3C/svg%3E")}
   nav a[data-view=obsolete]{--icn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='4' rx='1'/%3E%3Cpath d='M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8'/%3E%3Cpath d='M10 12h4'/%3E%3C/svg%3E")}
+  nav a[data-view=stickers]{--icn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cpath d='M8 8h8M8 12h8M8 16h5'/%3E%3C/svg%3E")}
   nav a[data-view=assets]{--icn:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='6' y='6' width='12' height='12' rx='1.5'/%3E%3Crect x='10' y='10' width='4' height='4'/%3E%3Cpath d='M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3'/%3E%3C/svg%3E")}
 
   main{overflow-y:auto;padding:22px 26px}
@@ -369,6 +370,7 @@
     <a href="#stores" data-view="stores">Stores & transfers</a>
     <a href="#obsolete" data-view="obsolete">Obsolete stock</a>
     <a href="#assets" data-view="assets">Assets</a>
+    <a href="#stickers" data-view="stickers">Sticker printer</a>
   </nav>
 
   <main id="main"></main>
@@ -890,7 +892,30 @@ function dashboardView(){
 }
 
 function listView(title, filter){
-  return `<h1>${title}</h1><div class="sub">&nbsp;</div>` + tableFor(state.items.filter(filter));
+  // base list always excludes obsolete/dead stock
+  let base = state.items.filter(i=>!i.obsolete).filter(filter);
+  const ft = window._llTracker||'', fs = window._llStore||'', fc = window._llCat||'';
+  const tracks = [...new Set(base.map(i=>i.tracker))].sort();
+  const stores = [...new Set(base.filter(i=>!ft||i.tracker===ft).map(i=>i.loc).filter(Boolean))].sort();
+  const cats = [...new Set(base.filter(i=>!ft||i.tracker===ft).map(i=>i.cat).filter(Boolean))].sort();
+  const shown = base.filter(i=>(!ft||i.tracker===ft)&&(!fs||i.loc===fs)&&(!fc||i.cat===fc));
+  return `<h1>${title}</h1>
+    <div class="toolrow">
+      <select onchange="window._llTracker=this.value;window._llStore='';window._llCat='';render()">
+        <option value="">All trackers</option>
+        ${tracks.map(t=>`<option value="${t}" ${t===ft?'selected':''}>${TRACKER_LABEL[t]}</option>`).join('')}
+      </select>
+      <select onchange="window._llStore=this.value;render()">
+        <option value="">All stores</option>
+        ${stores.map(s=>`<option ${s===fs?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <select onchange="window._llCat=this.value;render()">
+        <option value="">All categories</option>
+        ${cats.map(c=>`<option ${c===fc?'selected':''}>${c}</option>`).join('')}
+      </select>
+      ${(ft||fs||fc)?`<button class="btn" onclick="window._llTracker='';window._llStore='';window._llCat='';render()">Clear</button>`:''}
+      <span style="color:var(--ink-soft);font-size:13px;margin-left:auto">${shown.length} item(s)</span>
+    </div>` + tableFor(shown);
 }
 
 function actBadge(a){
@@ -2098,6 +2123,10 @@ function openAdd(scannedCode){
 function openEdit(i){
   const it = state.items[i];
   editItem = it;
+  if(LIVE && !it._row){
+    toast('Syncing this item first — try again in a moment');
+    loadAll();
+  }
   $('#adTracker').value = it.tracker; $('#adTracker').disabled = true;
   populateAddSelects(it.tracker, it.cat||'', it.loc||'');
   $('#adName').value=it.name; $('#adSup').value=it.supplier||'';
@@ -2128,11 +2157,16 @@ async function saveNewItem(){
     ReorderLevel:vals.reorder, UnitCost:vals.cost, Batch:vals.batch, Expiry:vals.expiry};
 
   if(editItem){                                    // ----- edit existing -----
+    const origCode = editItem.code, origBar = editItem.barcode, origName = editItem.name;
     Object.assign(editItem, vals);
     addDlg.close(); render(); toast('Updated: '+name);
-    if(LIVE && editItem._row){
-      try{ await api({action:'updateItem', tracker:TRACKER_TAB[tracker],
-                      row:editItem._row, fields}); }
+    if(LIVE){
+      try{
+        await api({action:'updateItem', tracker:TRACKER_TAB[tracker],
+                   row:editItem._row||0, fields,
+                   _origCode:origCode, _origBar:origBar, _origName:origName});
+        loadAll();   // re-sync so _row is correct for any further edits
+      }
       catch(err){ toast('Not saved to sheet — '+err.message); loadAll(); }
     }
     editItem = null;
@@ -3036,6 +3070,255 @@ async function assetReportPDF(){
   toast('Asset PDF downloaded');
 }
 
+/* ---------------- sticker printer (admin) ---------------- */
+// A4 = 210 x 297 mm. Default layout: 3 cols x 7 rows = 21 labels.
+// label 64.5w x 40h, left margin 14, right margin 7, top/bottom ~4.
+const STK_DEFAULT = { left:14, right:7, top:4, bottom:4, gapX:0, gapY:0, cols:3, rows:7, w:64.5, h:40, ink:'#111111' };
+let stkr = Object.assign({}, STK_DEFAULT);
+let stkMode = 'patient';           // 'patient' | 'codes'
+const stkPatient = { name:'', dob:'', pat:'', addr:'', surgeon:'' };
+const stkSel = new Set();          // selected item indices for codes mode
+let stkCodeType = 'barcode';       // 'barcode' | 'qr'
+
+function loadStkPreset(){
+  try{
+    const raw = (state.settings||[]).find(s=>s.Key==='sticker_margins');
+    if(raw && raw.Value){ Object.assign(stkr, JSON.parse(raw.Value)); }
+  }catch(e){}
+}
+
+function stickersView(){
+  loadStkPreset();
+  const tabBtn = (id,label)=>`<button onclick="stkMode='${id}';render()"
+      style="padding:10px 18px;border:none;border-bottom:3px solid ${stkMode===id?'var(--pine)':'transparent'};
+      background:none;font-weight:${stkMode===id?'700':'600'};font-size:14.5px;
+      color:${stkMode===id?'var(--pine)':'var(--ink-soft)'}">${label}</button>`;
+  return `<h1>Sticker printer</h1>
+    <div class="sub">Prints onto 21-per-sheet A4 label paper (3 × 7). Adjust margins for a perfect fit, save a preset once it's spot on.</div>
+    <div style="border-bottom:1px solid var(--line);margin-bottom:16px;display:flex;gap:4px">
+      ${tabBtn('patient','Patient stickers')}
+      ${tabBtn('codes','Barcode / QR stickers')}
+    </div>
+    ${stkMode==='patient'?stkPatientTab():stkCodesTab()}
+    ${stkMarginPanel()}`;
+}
+
+function stkMarginPanel(){
+  const f = (lab,key,step)=>`<div class="fld"><label>${lab} (mm)</label>
+    <input type="number" step="${step||0.5}" value="${stk[key]}" style="width:80px;padding:8px;border:1px solid var(--line);border-radius:8px"
+      oninput="stkr.${key}=parseFloat(this.value)||0"></div>`;
+  return `<div class="gaspanel" style="margin-top:20px">
+    <h2>Fine-tune margins</h2>
+    <div class="steprow" style="align-items:end">
+      ${f('Left margin','left')} ${f('Right margin','right')}
+      ${f('Top margin','top')} ${f('Bottom margin','bottom')}
+      ${f('Gap between cols','gapX')} ${f('Gap between rows','gapY')}
+    </div>
+    <div class="steprow" style="align-items:end;margin-top:12px">
+      ${f('Label width','w')} ${f('Label height','h')}
+      <div class="fld"><label>Ink colour</label>
+        <input type="color" value="${stkr.ink}" style="width:56px;height:40px;border:1px solid var(--line);border-radius:8px;padding:2px"
+          oninput="stkr.ink=this.value"></div>
+      <button class="btn" onclick="stkr=Object.assign({},STK_DEFAULT);render()">Reset defaults</button>
+      ${can('sticker')?`<button class="btn" onclick="saveStkPreset()">💾 Save these settings</button>`:''}
+    </div>
+    <div class="sub" style="margin-top:8px">Tip: print one test sheet, measure any drift, nudge the margin by that amount, reprint. Once perfect, save.</div>
+  </div>`;
+}
+async function saveStkPreset(){
+  const preset = {left:stkr.left,right:stkr.right,top:stkr.top,bottom:stkr.bottom,
+    gapX:stkr.gapX,gapY:stkr.gapY,w:stkr.w,h:stkr.h,ink:stkr.ink};
+  toast('Margin preset saved');
+  if(LIVE){
+    try{ await api({action:'setSetting', key:'sticker_margins', value:JSON.stringify(preset)});
+      const s=(state.settings||[]).find(x=>x.Key==='sticker_margins'); if(s) s.Value=JSON.stringify(preset);
+      else (state.settings=state.settings||[]).push({Key:'sticker_margins',Value:JSON.stringify(preset)});
+    }catch(e){ toast('Not saved — '+e.message); }
+  }
+}
+
+/* --- patient sticker tab --- */
+function stkPatientTab(){
+  const fld = (lab,key,ph)=>`<div class="m-row" style="margin-bottom:10px">
+    <label style="display:block;font-size:12.5px;color:var(--ink-soft);font-weight:600;margin-bottom:4px">${lab}</label>
+    <input id="stk_${key}" type="text" value="${stkPatient[key]||''}" placeholder="${ph||''}"
+      oninput="stkPatient.${key}=this.value"
+      style="width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:15px"></div>`;
+  return `<div style="max-width:520px">
+      ${fld('Patient name','name','e.g. Claire Louise Russell')}
+      ${fld('Date of birth','dob','e.g. 17/09/1985')}
+      ${fld('PAT number','pat','e.g. PAT-00944')}
+      ${fld('Address','addr','e.g. 16 Mill Croft, Flint CH6 5NP')}
+      ${fld('Surgeon','surgeon','e.g. Mr Aftab Siddiqui')}
+    </div>
+    <div class="toolrow" style="margin-top:14px">
+      <div class="fld"><label style="font-size:12.5px;color:var(--ink-soft);font-weight:600">How many stickers</label>
+        <div class="stepper"><button onclick="stkQty(-1)">−</button>
+          <input id="stkQty" value="21" inputmode="numeric" style="width:60px">
+          <button onclick="stkQty(1)">＋</button></div></div>
+      <button class="btn primary" style="align-self:end;padding:12px 22px" onclick="printPatientStickers()">🖨 Print sheet</button>
+      <button class="btn" style="align-self:end" onclick="downloadPatientPDF()">Download PDF</button>
+    </div>
+    <div class="sub">Fills the sheet left-to-right, top-to-bottom. Details clear after you print. Max 21 per sheet — more spills to extra pages.</div>`;
+}
+function stkQty(d){
+  const el=$('#stkQty'); let v=Math.max(1,(parseInt(el.value)||1)+d); el.value=v;
+}
+
+/* --- codes tab (barcode / QR for meds & consumables) --- */
+function stkCodesTab(){
+  const tr = window._skTracker||'meds';
+  const q = (window._skQ||'').toLowerCase();
+  const cat = window._skCat||'';
+  const pool = state.items.filter(i=>i.tracker===tr && !i.obsolete);
+  const cats = [...new Set(pool.map(i=>i.cat).filter(Boolean))].sort();
+  const list = pool.filter(i=>(!q || i.name.toLowerCase().includes(q) || (i.code||'').toLowerCase().includes(q)) &&
+    (!cat || i.cat===cat));
+  const allSel = list.length && list.every(i=>stkSel.has(state.items.indexOf(i)));
+  const rows = list.slice(0,500).map(i=>{
+    const ix = state.items.indexOf(i);
+    return `<tr>
+      <td data-label="" style="display:flex;gap:10px;align-items:center">
+        <input type="checkbox" ${stkSel.has(ix)?'checked':''} onchange="toggleSel(stkSel,${ix})" style="width:18px;height:18px">
+        <strong>${i.name}</strong></td>
+      <td class="code" data-label="Code">${i.code||i.barcode||'—'}</td>
+      <td data-label="Category">${i.cat||'—'}</td></tr>`;
+  }).join('');
+  return `
+    <div class="toolrow">
+      <select onchange="window._skTracker=this.value;window._skCat='';render()">
+        <option value="meds" ${tr==='meds'?'selected':''}>Medicines</option>
+        <option value="consumables" ${tr==='consumables'?'selected':''}>Consumables</option>
+        <option value="garments" ${tr==='garments'?'selected':''}>Garments</option>
+        <option value="linen" ${tr==='linen'?'selected':''}>Linen</option>
+      </select>
+      <select onchange="window._skCat=this.value;render()">
+        <option value="">All categories</option>
+        ${cats.map(c=>`<option ${c===cat?'selected':''}>${c}</option>`).join('')}
+      </select>
+      <input type="search" placeholder="Search name or code…" value="${window._skQ||''}"
+             oninput="window._skQ=this.value;render()">
+      <select onchange="stkCodeType=this.value">
+        <option value="barcode" ${stkCodeType==='barcode'?'selected':''}>Barcode</option>
+        <option value="qr" ${stkCodeType==='qr'?'selected':''}>QR code</option>
+      </select>
+    </div>
+    <div class="toolrow">
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px">
+        <input type="checkbox" ${allSel?'checked':''} onchange="stkSelAll(this.checked)" style="width:18px;height:18px">
+        Tick all shown (${list.length})</label>
+      <span style="color:var(--ink-soft);font-size:13px">${stkSel.size} selected</span>
+      <button class="btn primary" style="margin-left:auto" onclick="printCodeStickers()">🖨 Print sheet (21/page)</button>
+      <button class="btn" onclick="downloadCodePDF()">Download PDF</button>
+    </div>
+    <table><thead><tr><th>Item</th><th>Code</th><th>Category</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="3" style="color:var(--ink-soft)">Nothing matches.</td></tr>'}</tbody></table>`;
+}
+function stkSelAll(on){
+  const tr = window._skTracker||'meds', q=(window._skQ||'').toLowerCase(), cat=window._skCat||'';
+  if(on) state.items.forEach((i,ix)=>{ if(i.tracker===tr && !i.obsolete &&
+    (!q||i.name.toLowerCase().includes(q)||(i.code||'').toLowerCase().includes(q)) && (!cat||i.cat===cat)) stkSel.add(ix); });
+  else stkSel.clear();
+  render();
+}
+
+/* --- the actual sheet builder (shared by print + PDF) --- */
+function buildStickerDoc(cells){
+  // cells: array of {draw:(doc,x,y,w,h)=>void}. Lays them out 3x7 on A4 with current margins.
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+  const perPage = stkr.cols * stkr.rows;
+  cells.forEach((cell, i)=>{
+    const p = i % perPage;
+    if(i>0 && p===0) doc.addPage();
+    const col = p % stkr.cols, rowN = Math.floor(p / stkr.cols);
+    const x = stkr.left + col * (stkr.w + stkr.gapX);
+    const y = stkr.top + rowN * (stkr.h + stkr.gapY);
+    cell.draw(doc, x, y, stkr.w, stkr.h);
+  });
+  return doc;
+}
+function hexToRgb(hex){
+  const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'#111111');
+  return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:[17,17,17];
+}
+
+function patientCell(){
+  const p = stkPatient, ink = hexToRgb(stkr.ink);
+  return { draw:(doc,x,y,w,h)=>{
+    doc.setTextColor(ink[0],ink[1],ink[2]);
+    const cx = x + w/2;
+    let cy = y + h/2 - 8;                    // vertically centred block
+    doc.setFont('helvetica','bold'); doc.setFontSize(10);
+    doc.text(p.name||'', cx, cy, {align:'center', maxWidth:w-6}); cy+=4.6;
+    doc.setFont('helvetica','normal'); doc.setFontSize(8);
+    if(p.dob){ doc.text('DOB: '+p.dob, cx, cy, {align:'center', maxWidth:w-6}); cy+=3.8; }
+    if(p.pat){ doc.setFont('helvetica','bold'); doc.text(p.pat, cx, cy, {align:'center', maxWidth:w-6}); doc.setFont('helvetica','normal'); cy+=3.8; }
+    if(p.addr){ const al=doc.splitTextToSize(p.addr, w-6); doc.text(al, cx, cy, {align:'center'}); cy+=3.6*al.length; }
+    if(p.surgeon){ doc.setFont('helvetica','italic'); doc.setFontSize(7.5); doc.text(p.surgeon, cx, cy, {align:'center', maxWidth:w-6}); }
+  }};
+}
+function codeCell(item){
+  const ink = hexToRgb(stkr.ink);
+  const code = item.barcode || item.code;
+  let dataUrl=null, isQR=(stkCodeType==='qr');
+  try{
+    if(isQR){
+      const holder=document.createElement('div');
+      new QRCode(holder,{text:String(code),width:220,height:220,correctLevel:QRCode.CorrectLevel.M});
+      dataUrl=holder.querySelector('canvas').toDataURL('image/png');
+    } else {
+      const cv=document.createElement('canvas');
+      JsBarcode(cv,String(code),{format:'CODE128',displayValue:false,margin:2,height:70,width:2,
+        lineColor:stkr.ink});
+      dataUrl=cv.toDataURL('image/png');
+    }
+  }catch(e){}
+  return { draw:(doc,x,y,w,h)=>{
+    doc.setTextColor(ink[0],ink[1],ink[2]);
+    doc.setFont('helvetica','bold'); doc.setFontSize(7.5);
+    const nm=doc.splitTextToSize(item.name, w-6).slice(0,2);
+    doc.text(nm, x+w/2, y+5, {align:'center'});
+    if(dataUrl){
+      if(isQR){ const s=Math.min(20,h-16); doc.addImage(dataUrl,'PNG',x+(w-s)/2,y+h/2-s/2+1,s,s); }
+      else { const bw=w-14,bh=Math.min(13,h-18); doc.addImage(dataUrl,'PNG',x+7,y+h/2-bh/2+2,bw,bh); }
+    }
+    doc.setFont('courier','normal'); doc.setFontSize(7.5);
+    doc.text(String(code), x+w/2, y+h-3.5, {align:'center'});
+  }};
+}
+
+function printPatientStickers(){ patientOut(false); }
+function downloadPatientPDF(){ patientOut(true); }
+function patientOut(download){
+  if(!stkPatient.name){ toast('Enter at least the patient name'); return; }
+  const n = Math.max(1, parseInt($('#stkQty').value)||21);
+  const cells = []; for(let i=0;i<n;i++) cells.push(patientCell());
+  const doc = buildStickerDoc(cells);
+  if(download){ doc.save('Patient_Stickers_'+(stkPatient.name.replace(/[^A-Za-z]+/g,'_'))+'.pdf'); toast('PDF downloaded'); }
+  else { doc.autoPrint(); window.open(doc.output('bloburl'),'_blank'); }
+  // clear details after printing
+  Object.keys(stkPatient).forEach(k=>stkPatient[k]='');
+  render();
+  toast('Sent to print — details cleared');
+}
+
+function printCodeStickers(){ codeOut(false); }
+function downloadCodePDF(){ codeOut(true); }
+function codeOut(download){
+  const picked=[...stkSel].map(ix=>state.items[ix]).filter(Boolean);
+  if(!picked.length){ toast('Tick at least one item'); return; }
+  // ensure each has a code
+  const newCodes=[];
+  picked.forEach(it=>{ if(!it.barcode && !it.code){ it.barcode=genCode(it.tracker);
+    newCodes.push({tracker:TRACKER_TAB[it.tracker],code:it.code||it.name,barcode:it.barcode}); } });
+  if(newCodes.length && LIVE) api({action:'setBarcodes',entries:newCodes}).catch(e=>toast('Codes not saved — '+e.message));
+  const cells = picked.map(it=>codeCell(it));
+  const doc = buildStickerDoc(cells);
+  if(download){ doc.save((stkCodeType==='qr'?'QR':'Barcode')+'_Stickers_'+picked.length+'.pdf'); toast('PDF downloaded'); }
+  else { doc.autoPrint(); window.open(doc.output('bloburl'),'_blank'); }
+}
+
 /* ---------------- router ---------------- */
 function goHome(e){
   e.preventDefault();
@@ -3045,7 +3328,9 @@ function goHome(e){
 }
 function nav(view){
   if(!viewAllowed(view)) view='dashboard';
-  currentView=view; window._q=''; window._store=''; window._cat=''; render(); }
+  currentView=view; window._q=''; window._store=''; window._cat='';
+  window._llTracker=''; window._llStore=''; window._llCat='';
+  render(); }
 document.querySelectorAll('nav a').forEach(a=>a.addEventListener('click',e=>{
   e.preventDefault();
   document.querySelectorAll('nav a').forEach(x=>x.classList.remove('active'));
@@ -3080,6 +3365,7 @@ function render(){
   else if(v==='stores') m.innerHTML = storesView();
   else if(v==='assets') m.innerHTML = assetsView();
   else if(v==='gas'){ m.innerHTML = gasView(); paintDeliv('o2'); paintDeliv('air'); }
+  else if(v==='stickers') m.innerHTML = stickersView();
   else m.innerHTML = trackerView(v);
 }
 
@@ -3156,6 +3442,7 @@ async function loadAll(){
       returnedBy:d.ReturnedBy||'', status:st};});
     state.alerts = data.alerts.map(a=>({_row:a._row, ts:a.Timestamp, type:a.Type,
       item:a.Item, detail:a.Detail, status:a.Status, tracker:a.Tracker}));
+    state.settings = data.settings || state.settings || [];
     state.gasChecks = (data.gasChecks||[]).map(g=>({date:g.Date?String(g.Date).slice(0,10):'', by:g.By||'',
       o2L:g.O2_LeftBank??'', o2R:g.O2_RightBank??'', o2P:g.O2_Pipeline??'', o2Use:g.O2_InUseBank||'',
       o2Deliv:g.O2_DeliveryBooked==='Yes',
@@ -3201,9 +3488,9 @@ try { session = JSON.parse(localStorage.getItem('bollin_session')||'null'); } ca
 if(session) myName = session.displayName || '';
 
 const PERMS = {
-  admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:1, stores:1, assets:1, useedit:1},
-  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:0, stores:0, assets:0, useedit:0},
-  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0, instr:0, reports:0, obsolete:0, stores:0, assets:0, useedit:0}
+  admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:1, stores:1, assets:1, useedit:1, sticker:1},
+  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:0, stores:0, assets:0, useedit:0, sticker:0},
+  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0, instr:0, reports:0, obsolete:0, stores:0, assets:0, useedit:0, sticker:0}
 };
 function role(){ return LIVE ? (session ? session.role : null) : 'admin'; }
 function can(p){ const r = role(); return !!(r && PERMS[r] && PERMS[r][p]); }
@@ -3269,6 +3556,7 @@ function viewAllowed(v){
   if(v==='obsolete') return can('obsolete');
   if(v==='stores') return can('stores');
   if(v==='assets') return can('assets');
+  if(v==='stickers') return can('sticker');
   return true;
 }
 function applyNavPerms(){

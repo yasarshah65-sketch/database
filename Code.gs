@@ -34,7 +34,8 @@ const ACTION_ROLE = {
   addItem:'admin', updateItem:'admin', setBarcodes:'admin',
   moveStore:'admin', storeAdd:'admin', storeRemove:'admin', clearBarcode:'admin',
   assetAdd:'admin', assetUpdate:'admin',
-  useEdit:'admin', useDelete:'admin'
+  useEdit:'admin', useDelete:'admin',
+  setSetting:'admin'
 };
 const ROLE_RANK = { common: 0, staff: 1, admin: 2 };
 
@@ -82,6 +83,7 @@ function doPost(e) {
       case 'gasCheckAdd': return json_(gasCheckAdd_(req));
       case 'useEdit':     return json_(useEdit_(req));
       case 'useDelete':   return json_(useDelete_(req));
+      case 'setSetting':  return json_(setSetting_(req));
       case 'ack':       return json_(ackAlert_(req));
       case 'stocktake': return json_(stocktake_(req));
       default:          return json_({ ok: false, error: 'Unknown action' });
@@ -221,6 +223,17 @@ function col_(head, name) {
   return i + 1;
 }
 
+function setSetting_(q) {
+  // q: {key, value} — upsert a Settings row (used for saved sticker margins etc.)
+  const sh = ss_().getSheetByName('Settings');
+  if (!sh) return { ok: false, error: 'Settings tab missing' };
+  const vals = sh.getRange(1, 1, Math.max(sh.getLastRow(), 1), 1).getValues().map(r => String(r[0]));
+  const at = vals.indexOf(String(q.key));
+  if (at >= 0) sh.getRange(at + 1, 2).setValue(q.value);
+  else sh.appendRow([q.key, q.value, 'Saved from the app']);
+  return { ok: true };
+}
+
 function setting_(key, fallback) {
   const row = readTab_('Settings').find(r => r.Key === key);
   return row && row.Value != null && row.Value !== '' ? row.Value : fallback;
@@ -250,6 +263,7 @@ function getAll_(session) {
     stores: readTab_('Stores'),
     assets: (session && session.role === 'admin') ? readTab_('Assets') : [],
     gasChecks: readTab_('GasChecks').slice(-180),
+    settings: readTab_('Settings'),
     serverTime: new Date().toISOString()
   };
 }
@@ -335,10 +349,44 @@ function respondRequest_(q) {
 }
 
 function updateItem_(q) {
-  // q: {tracker, row, fields:{header:value,...}} — updates one item row in place
+  // q: {tracker, row, fields:{header:value,...}} — updates one item row in place.
+  // Resolves the row defensively so an edit can NEVER create a duplicate:
+  // trust q.row only if it still holds the same Code/Barcode; otherwise re-find it.
   const sh = ss_().getSheetByName(q.tracker);
   if (!sh) return { ok: false, error: 'No tab: ' + q.tracker };
   const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const cCode = head.indexOf('Code'), cBar = head.indexOf('Barcode'), cName = head.indexOf('Name');
+  const wantCode = q.fields && q.fields.Code, wantBar = q.fields && q.fields.Barcode;
+  const last = sh.getLastRow();
+
+  function rowMatches(r) {
+    const vals = sh.getRange(r, 1, 1, head.length).getValues()[0];
+    const vc = cCode >= 0 ? String(vals[cCode] || '').trim() : '';
+    const vb = cBar >= 0 ? String(vals[cBar] || '').trim() : '';
+    if (wantCode && vc && vc === String(wantCode).trim()) return true;
+    if (wantBar && vb && vb === String(wantBar).trim()) return true;
+    return false;
+  }
+
+  let row = Number(q.row) || 0;
+  // if the supplied row is out of range, or its identifiers don't match what we're editing, re-find it
+  const needFind = !row || row < 2 || row > last ||
+    ((wantCode || wantBar) && !rowMatches(row));
+  if (needFind && (wantCode || wantBar || (q._origCode || q._origBar || q._origName))) {
+    const oc = String(q._origCode || wantCode || '').trim();
+    const ob = String(q._origBar || wantBar || '').trim();
+    const on = String(q._origName || (q.fields && q.fields.Name) || '').trim().toLowerCase();
+    row = 0;
+    for (let r = 2; r <= last; r++) {
+      const vals = sh.getRange(r, 1, 1, head.length).getValues()[0];
+      const vc = cCode >= 0 ? String(vals[cCode] || '').trim() : '';
+      const vb = cBar >= 0 ? String(vals[cBar] || '').trim() : '';
+      const vn = cName >= 0 ? String(vals[cName] || '').trim().toLowerCase() : '';
+      if ((oc && vc === oc) || (ob && vb === ob) || (on && vn === on)) { row = r; break; }
+    }
+  }
+  if (!row) return { ok: false, error: 'Could not locate the item to update (no matching row)' };
+  q.row = row;
   Object.keys(q.fields || {}).forEach(h => {
     const c = head.indexOf(h);
     if (c < 0) return;
@@ -800,6 +848,9 @@ function migrate() {
     }
     if (keys.indexOf('implant_email') < 0) {
       st.appendRow(['implant_email', '', 'Email(s) notified instantly when a new implant order is created, comma-separated']);
+    }
+    if (keys.indexOf('sticker_margins') < 0) {
+      st.appendRow(['sticker_margins', '', 'Saved sticker-sheet margin preset (JSON) from the Sticker printer']);
     }
   }
   // 2. Requests tab: old schema (Tracker/Code, HandledAt) -> new (Size, DateResponded, Remarks)
