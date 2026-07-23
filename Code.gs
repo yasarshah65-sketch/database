@@ -387,6 +387,37 @@ function updateItem_(q) {
   }
   if (!row) return { ok: false, error: 'Could not locate the item to update (no matching row)' };
   q.row = row;
+
+  // build a human-readable change note by comparing old vs new
+  const LABEL = { UnitCost: 'price', Qty: 'quantity', ReorderLevel: 'reorder level',
+    Location: 'location', Category: 'category', Supplier: 'supplier', Expiry: 'expiry',
+    Name: 'name', Barcode: 'barcode', Unit: 'unit', Batch: 'batch', Notes: 'remarks',
+    Obsolete: 'obsolete flag', Status: 'status' };
+  const oldRow = sh.getRange(q.row, 1, 1, head.length).getValues()[0];
+  const changes = [];
+  Object.keys(q.fields || {}).forEach(h => {
+    const ci = head.indexOf(h); if (ci < 0) return;
+    let ov = oldRow[ci], nv = q.fields[h];
+    const os = ov === null || ov === undefined ? '' : String(ov).slice(0, 30);
+    const ns = nv === null || nv === undefined ? '' : String(nv).slice(0, 30);
+    if (os === ns) return;
+    const lab = LABEL[h] || h;
+    if (h === 'UnitCost') changes.push(os === '' ? 'price set to £' + ns : 'price £' + os + ' → £' + ns);
+    else if (h === 'Qty') changes.push('quantity ' + (os || 0) + ' → ' + (ns || 0));
+    else if (os === '') changes.push(lab + ' set to "' + ns + '"');
+    else if (ns === '') changes.push(lab + ' cleared');
+    else changes.push(lab + ' "' + os + '" → "' + ns + '"');
+  });
+  q._changeNote = changes.length ? changes.join('; ') : 'Item details updated';
+
+  // stamp obsolete metadata when the Obsolete flag is being set/cleared
+  if (q.fields && Object.prototype.hasOwnProperty.call(q.fields, 'Obsolete')) {
+    const cWho = head.indexOf('ObsoleteBy'), cWhen = head.indexOf('ObsoleteAt');
+    const on = String(q.fields.Obsolete || '').toLowerCase() === 'yes';
+    if (cWho >= 0) sh.getRange(q.row, cWho + 1).setValue(on ? (CURRENT_USER || '') : '');
+    if (cWhen >= 0) sh.getRange(q.row, cWhen + 1).setValue(on ? new Date() : '');
+  }
+
   Object.keys(q.fields || {}).forEach(h => {
     const c = head.indexOf(h);
     if (c < 0) return;

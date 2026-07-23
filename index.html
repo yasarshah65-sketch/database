@@ -169,6 +169,82 @@
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--pine-deep);color:#fff;padding:11px 20px;border-radius:9px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:50}
   .toast.show{opacity:1}
 
+  /* ===================== THEMES ===================== */
+  body[data-theme="night"]{
+    --pine:#5FD0C5; --pine-deep:#3BA89D; --gold:#D9B871; --gold-soft:#2A2E33;
+    --mist:#12171B; --card:#1A2127; --ink:#E7EEEC; --ink-soft:#9AAAA6; --line:#2C3A40;
+    --amber:#F0B45C; --amber-bg:#2E2413; --red:#F58A82; --red-bg:#331A1A;
+    --ok:#6FD8B0; --ok-bg:#173029; --exp:#E7C27A; --exp-bg:#2E2818;
+  }
+  body[data-theme="warm"]{
+    --pine:#B5652E; --pine-deep:#8A4A1F; --gold:#C88A3C; --gold-soft:#F6E7D4;
+    --mist:#FBF3EA; --card:#FFFBF6; --ink:#3A2A1E; --ink-soft:#7A6552; --line:#EAD9C6;
+    --amber:#A9611A; --amber-bg:#F9E7CE; --red:#B23B2B; --red-bg:#F7DBD3;
+    --ok:#5E7A3A; --ok-bg:#EAF0DA; --exp:#8A5A1E; --exp-bg:#F6E6C9;
+  }
+  body[data-theme="rose"]{
+    --pine:#B0436B; --pine-deep:#8C3354; --gold:#C77E9B; --gold-soft:#FBE9F0;
+    --mist:#FCF3F6; --card:#FFFCFD; --ink:#3A2230; --ink-soft:#7C5E6D; --line:#F0D6DF;
+    --amber:#A85A5A; --amber-bg:#FBE6E0; --red:#B02A4A; --red-bg:#F9DCE3;
+    --ok:#5E7A6A; --ok-bg:#E6F0EA; --exp:#9A5A6A; --exp-bg:#F7E2E9;
+  }
+  body[data-theme="forest"]{
+    --pine:#2F7D57; --pine-deep:#215C3F; --gold:#B79A55; --gold-soft:#EAF1E6;
+    --mist:#F1F5EF; --card:#FFFFFF; --ink:#1C2A22; --ink-soft:#556B5C; --line:#D6E3D6;
+    --amber:#8A6A1A; --amber-bg:#F3EACE; --red:#A6392B; --red-bg:#F5DED9;
+    --ok:#2F7D57; --ok-bg:#E1EFE6; --exp:#6A6A1E; --exp-bg:#EEEECB;
+  }
+  body[data-theme="mono"]{
+    --pine:#3A3A3A; --pine-deep:#222; --gold:#8A8A8A; --gold-soft:#EEE;
+    --mist:#F4F4F4; --card:#FFFFFF; --ink:#1A1A1A; --ink-soft:#666; --line:#DDD;
+    --amber:#6A5A00; --amber-bg:#F2EED8; --red:#8A2A2A; --red-bg:#F2DDDD;
+    --ok:#2A5A4A; --ok-bg:#E2EEE9; --exp:#5A4A2A; --exp-bg:#EFE8D8;
+  }
+  body[data-theme="midnight"]{
+    --pine:#7CA7FF; --pine-deep:#5A87E0; --gold:#C9A96A; --gold-soft:#1B2233;
+    --mist:#0D1117; --card:#161C27; --ink:#E6ECF5; --ink-soft:#8B9AB5; --line:#232C3B;
+    --amber:#E7B45C; --amber-bg:#2A2413; --red:#F58A82; --red-bg:#331A1A;
+    --ok:#6FD8B0; --ok-bg:#152A28; --exp:#E7C27A; --exp-bg:#2A2618;
+  }
+  body[data-accent="teal"]{--pine:#2B6168}
+  body[data-accent="violet"]{--pine:#6C4AB6}
+  body[data-accent="ocean"]{--pine:#1E6F9F}
+  body[data-accent="emerald"]{--pine:#0E7C5A}
+  body[data-accent="crimson"]{--pine:#A62B4A}
+  body[data-font="plex"]{--sans:'IBM Plex Sans',system-ui,sans-serif}
+  body[data-font="inter"]{--sans:'Inter',system-ui,sans-serif}
+  body[data-font="system"]{--sans:system-ui,-apple-system,'Segoe UI',sans-serif}
+  body[data-density="compact"] table td{padding:6px 10px;font-size:13.5px}
+  body[data-radius="round"] .tile,body[data-radius="round"] .gaspanel{border-radius:20px}
+  body[data-radius="sharp"] .tile,body[data-radius="sharp"] .gaspanel,body[data-radius="sharp"] .badge{border-radius:0}
+  body,.tile,.gaspanel,nav a,table td,.badge{transition:background-color .25s ease,color .25s ease,border-color .25s ease}
+
+  /* ---------- appearance cog + popover ---------- */
+  .cog{background:none;border:1px solid var(--line);border-radius:9px;width:34px;height:34px;font-size:15px;
+       color:var(--ink-soft);display:inline-flex;align-items:center;justify-content:center;transition:all .2s ease;flex-shrink:0}
+  .cog:hover{border-color:var(--gold);color:var(--gold);transform:rotate(30deg)}
+  .themepop{position:fixed;top:62px;left:16px;width:300px;background:var(--card);border:1px solid var(--line);
+       border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.22);padding:16px;z-index:130;display:none}
+  .themepop.open{display:block;animation:popIn .18s ease}
+  @keyframes popIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .themepop h4{font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--gold);font-weight:700;margin:14px 0 8px}
+  .themepop h4:first-child{margin-top:0}
+  .swatchrow{display:flex;flex-wrap:wrap;gap:8px}
+  .swatch{width:38px;height:38px;border-radius:10px;border:2px solid transparent;cursor:pointer;position:relative;transition:all .15s ease}
+  .swatch:hover{transform:translateY(-2px)}
+  .swatch.on{border-color:var(--ink)}
+  .swatch.on::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.55)}
+  .chiprow{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{padding:7px 13px;border-radius:99px;border:1px solid var(--line);background:var(--mist);cursor:pointer;font-size:13px;font-weight:600;color:var(--ink-soft);transition:all .18s ease}
+  .chip.on{background:var(--pine);color:#fff;border-color:var(--pine)}
+
+  /* ---------- item remarks ---------- */
+  tr.hasrem{background:linear-gradient(90deg, rgba(176,138,62,0.10), transparent 60%)}
+  .remflag{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:99px;font-size:11.5px;font-weight:600;
+       color:#8A5A00;background:#FBEFD0;border:1px solid #EAD69A;vertical-align:1px;max-width:260px;overflow:hidden;
+       text-overflow:ellipsis;white-space:nowrap}
+  body[data-theme="night"] .remflag,body[data-theme="midnight"] .remflag{color:#E7C27A;background:#2E2818;border-color:#4A421F}
+
   /* ---------- gas room checks ---------- */
   .gaspanel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
   .gaspanel h2{font-size:15px;font-weight:700;color:var(--pine);display:flex;align-items:center;gap:9px;margin-bottom:12px}
@@ -333,6 +409,7 @@
   <header class="scanbar">
     <a class="brand" href="#dashboard" onclick="goHome(event)" title="Bollin Clinic Stock Manager — home">
       <img src="logo.png" alt="Bollin Clinic Stock Manager"></a>
+    <button class="cog" onclick="toggleThemePop(event)" title="Appearance & themes" aria-label="Appearance">⚙</button>
     <div class="scanwrap" title="Netum scanner is captured anywhere in the app">
       <span class="pulse" aria-hidden="true"></span>
       <input id="scanInput" data-scan="1" type="text" autocomplete="off" enterkeyhint="go"
@@ -374,6 +451,23 @@
   </nav>
 
   <main id="main"></main>
+</div>
+
+<div id="themePop" class="themepop">
+  <h4>Theme</h4>
+  <div class="swatchrow" id="themeSwatches"></div>
+  <h4>Accent colour</h4>
+  <div class="swatchrow" id="accentSwatches"></div>
+  <h4>Font</h4>
+  <div class="chiprow" id="fontChips"></div>
+  <h4>Density</h4>
+  <div class="chiprow" id="densityChips"></div>
+  <h4>Corners</h4>
+  <div class="chiprow" id="radiusChips"></div>
+  <div style="margin-top:16px;display:flex;gap:8px">
+    <button class="btn" style="flex:1" onclick="resetTheme()">Reset</button>
+    <button class="btn primary" style="flex:1" onclick="closeThemePop()">Done</button>
+  </div>
 </div>
 
 <dialog id="moveDlg">
@@ -439,6 +533,8 @@
     <div class="m-row"><label for="adCost">Unit cost £</label><input id="adCost" type="number" min="0" step="0.01" placeholder="Optional"></div>
     <div class="m-row"><label for="adBatch">Batch / Lot</label><input id="adBatch" type="text" placeholder="Optional"></div>
     <div class="m-row"><label for="adExp">Expiry</label><input id="adExp" type="date"></div>
+    <div class="m-row"><label for="adNotes">Remarks <span style="font-weight:400;color:var(--ink-soft)">(e.g. on back order, supplier out of stock)</span></label>
+      <textarea id="adNotes" rows="2" placeholder="Leave empty for none" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-family:inherit;font-size:15px;resize:vertical"></textarea></div>
   </div>
   <div class="m-actions">
     <button class="btn" onclick="addDlg.close()">Cancel</button>
@@ -799,6 +895,7 @@ async function saveMove(){
 }
 
 /* ---------------- views ---------------- */
+function escapeAttr(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function tableFor(items, opts={}){
   const showExp = opts.expiry!==false;
   const head = `<thead><tr>
@@ -806,8 +903,11 @@ function tableFor(items, opts={}){
       ${showExp?'<th>Expiry</th>':''}<th class="qty">Qty</th><th>Status</th><th></th></tr></thead>`;
   const rows = items.map(it=>{
     const s = statusOf(it);
-    return `<tr>
-      <td data-label=""><strong>${it.name}</strong></td>
+    const hasRem = !!(it.remarks && it.remarks.trim());
+    const remChip = hasRem
+      ? ` <span class="remflag" title="${String(it.remarks).replace(/"/g,'&quot;')}">📝 ${escapeAttr(it.remarks)}</span>` : '';
+    return `<tr class="${hasRem?'hasrem':''}">
+      <td data-label=""><strong>${it.name}</strong>${remChip}</td>
       <td class="code" data-label="Code">${it.code||'—'}</td>
       <td data-label="Category">${it.cat||'—'}</td>
       <td data-label="Location">${it.loc||'—'}</td>
@@ -2107,7 +2207,7 @@ function plusOption(sel, what){
 }
 function openAdd(scannedCode){
   editItem = null;
-  ['adName','adSup','adCode','adCost','adBatch','adExp'].forEach(id=>$('#'+id).value='');
+  ['adName','adSup','adCode','adCost','adBatch','adExp','adNotes'].forEach(id=>$('#'+id).value='');
   $('#adUnit').value='Each'; $('#adQty').value=0; $('#adRo').value=1;
   $('#adBar').value = scannedCode || '';
   if(currentView in TRACKER_TAB) $('#adTracker').value = currentView;
@@ -2134,6 +2234,7 @@ function openEdit(i){
   $('#adUnit').value=it.unit; $('#adQty').value=it.qty; $('#adRo').value=it.reorder;
   $('#adCost').value=it.cost!=null?it.cost:''; $('#adBatch').value=it.batch||'';
   $('#adExp').value=it.expiry||'';
+  $('#adNotes').value=it.remarks||'';
   $('#addDlgTitle').textContent='Edit item'; $('#addDlgSave').textContent='Save changes';
   addDlg.showModal();
 }
@@ -2151,10 +2252,12 @@ async function saveNewItem(){
     reorder:Math.max(0,parseInt($('#adRo').value||'0',10)),
     cost:$('#adCost').value?Number($('#adCost').value):null,
     batch:$('#adBatch').value.trim(),
-    expiry:$('#adExp').value||null};
+    expiry:$('#adExp').value||null,
+    remarks:$('#adNotes').value.trim()};
   const fields = {Code:vals.code, Barcode:vals.barcode, Name:vals.name, Category:vals.cat,
     Supplier:vals.supplier, Location:vals.loc, Unit:vals.unit, Qty:vals.qty,
-    ReorderLevel:vals.reorder, UnitCost:vals.cost, Batch:vals.batch, Expiry:vals.expiry};
+    ReorderLevel:vals.reorder, UnitCost:vals.cost, Batch:vals.batch, Expiry:vals.expiry,
+    Notes:vals.remarks};
 
   if(editItem){                                    // ----- edit existing -----
     const origCode = editItem.code, origBar = editItem.barcode, origName = editItem.name;
@@ -3397,7 +3500,8 @@ function mapItem(tab, r){
     expiry: r.Expiry ? String(r.Expiry).slice(0,10) : null,
     batch: r.Batch||'', status: r.Status||'',
     obsolete: String(r.Obsolete||'').toLowerCase()==='yes',
-    obsBy: r.ObsoleteBy||'', obsAt: r.ObsoleteAt||''};
+    obsBy: r.ObsoleteBy||'', obsAt: r.ObsoleteAt||'',
+    remarks: r.Notes||''};
 }
 
 async function loadAll(){
@@ -3566,7 +3670,74 @@ function applyNavPerms(){
 }
 paintName();
 
-/* ---------------- init ---------------- *//* ---------------- init ---------------- */
+/* ---------------- appearance / theme personalisation ---------------- */
+const THEMES = [
+  {id:'day', name:'Day', c:'#2B6168'}, {id:'night', name:'Night', c:'#1A2127'},
+  {id:'warm', name:'Warm', c:'#B5652E'}, {id:'rose', name:'Rose', c:'#B0436B'},
+  {id:'forest', name:'Forest', c:'#2F7D57'}, {id:'mono', name:'Mono', c:'#3A3A3A'},
+  {id:'midnight', name:'Midnight', c:'#0D1117'}
+];
+const ACCENTS = [
+  {id:'teal', c:'#2B6168'}, {id:'violet', c:'#6C4AB6'}, {id:'ocean', c:'#1E6F9F'},
+  {id:'emerald', c:'#0E7C5A'}, {id:'crimson', c:'#A62B4A'}
+];
+const prefs = { theme:'day', accent:'teal', font:'plex', density:'cozy', radius:'default' };
+function loadPrefs(){
+  try{ Object.assign(prefs, JSON.parse(localStorage.getItem('bollin_prefs')||'{}')); }catch(e){}
+  applyPrefs();
+}
+function applyPrefs(){
+  const b = document.body;
+  b.dataset.theme = prefs.theme;
+  b.dataset.accent = prefs.accent;
+  b.dataset.font = prefs.font;
+  b.dataset.density = prefs.density;
+  b.dataset.radius = prefs.radius;
+  try{ localStorage.setItem('bollin_prefs', JSON.stringify(prefs)); }catch(e){}
+}
+function setPref(k,v){ prefs[k]=v; applyPrefs(); paintThemePop(); }
+function resetTheme(){
+  Object.assign(prefs, {theme:'day', accent:'teal', font:'plex', density:'cozy', radius:'default'});
+  applyPrefs(); paintThemePop();
+}
+function openThemePop(){
+  const p = document.getElementById('themePop');
+  paintThemePop();
+  p.classList.add('open');
+  setTimeout(()=>document.addEventListener('click', closeThemePopOnce),0);
+}
+function closeThemePop(){
+  const p = document.getElementById('themePop');
+  if(p) p.classList.remove('open');
+  document.removeEventListener('click', closeThemePopOnce);
+}
+function toggleThemePop(e){
+  if(e) e.stopPropagation();
+  const p = document.getElementById('themePop');
+  if(p.classList.contains('open')) closeThemePop(); else openThemePop();
+}
+function closeThemePopOnce(ev){
+  const p = document.getElementById('themePop');
+  const cog = document.querySelector('.cog');
+  if(p && !p.contains(ev.target) && !(cog && cog.contains(ev.target))) closeThemePop();
+}
+function paintThemePop(){
+  const sw = document.getElementById('themeSwatches');
+  if(sw) sw.innerHTML = THEMES.map(t=>`<div class="swatch ${prefs.theme===t.id?'on':''}"
+      style="background:${t.c}" title="${t.name}" onclick="setPref('theme','${t.id}')"></div>`).join('');
+  const ac = document.getElementById('accentSwatches');
+  if(ac) ac.innerHTML = ACCENTS.map(a=>`<div class="swatch ${prefs.accent===a.id?'on':''}"
+      style="background:${a.c}" title="${a.id}" onclick="setPref('accent','${a.id}')"></div>`).join('');
+  const chip = (host, opts, key)=>{ const el=document.getElementById(host); if(el) el.innerHTML =
+    opts.map(o=>`<div class="chip ${prefs[key]===o.v?'on':''}" onclick="setPref('${key}','${o.v}')">${o.l}</div>`).join(''); };
+  chip('fontChips', [{v:'plex',l:'Plex'},{v:'inter',l:'Inter'},{v:'system',l:'System'}], 'font');
+  chip('densityChips', [{v:'cozy',l:'Cozy'},{v:'compact',l:'Compact'}], 'density');
+  chip('radiusChips', [{v:'default',l:'Default'},{v:'round',l:'Rounded'},{v:'sharp',l:'Sharp'}], 'radius');
+}
+loadPrefs();
+
+/* ---------------- init ---------------- */
+applyPrefs();
 applyNavPerms();
 render();                          // instant paint
 if(LIVE && !session) showLogin();  // must sign in before data loads
