@@ -509,6 +509,20 @@
   </div>
 </dialog>
 
+<dialog id="procPickerDlg">
+  <div class="m-head">Add item to procedure</div>
+  <div class="m-body">
+    <p style="font-size:13.5px;color:var(--ink-soft);margin-bottom:12px">
+      Type a few letters — pick the exact item from the list. If several items start the same way, they'll all show so you don't add the wrong one.</p>
+    <div class="m-row"><label for="procPickSearch">Search</label>
+      <input id="procPickSearch" type="search" placeholder="Item name or code…" oninput="renderProcPicker()" autocomplete="off"></div>
+    <div id="procPickList" style="max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"></div>
+  </div>
+  <div class="m-actions">
+    <button class="btn" onclick="procPickerDlg.close()">Cancel</button>
+  </div>
+</dialog>
+
 <dialog id="addDlg">
   <div class="m-head" id="addDlgTitle">Add new item</div>
   <div class="m-body">
@@ -1124,6 +1138,7 @@ function resolveRange(prefix){
 }
 
 async function txReportPDF(){
+ try{
   const r = resolveRange('tx');
   if(!r) return;
   // pull the active on-screen filters so the PDF matches exactly what's shown
@@ -1150,14 +1165,16 @@ async function txReportPDF(){
   // build a readable description of the active filters for the report header
   const activeFilters = [fa&&('activity: '+fa), fb&&('by: '+fb), ft&&('tracker: '+ft), fq&&('search: "'+fq+'"')].filter(Boolean).join('  ·  ');
 
+  if(!window.jspdf){ toast('PDF library still loading — try again in a second'); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({orientation:'landscape', unit:'mm', format:'a4'});
+  if(typeof doc.autoTable!=='function'){ toast('PDF table plugin failed to load — refresh the page and try again'); return; }
   const W = doc.internal.pageSize.getWidth();
   try{
     const blob = await fetch('logo.png').then(x=>x.blob());
     const dataUrl = await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(blob);});
-    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.src=dataUrl;});
-    doc.addImage(dataUrl,'PNG',10,8,14*(img.width/img.height),14);
+    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>res(null);setTimeout(()=>res(null),1500);i.src=dataUrl;});
+    if(img) doc.addImage(dataUrl,'PNG',10,8,14*(img.width/img.height),14);
   }catch(e){}
   doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(43,97,104);
   doc.text('Activity Log Report', W-10, 13, {align:'right'});
@@ -1189,6 +1206,7 @@ async function txReportPDF(){
   });
   doc.save('Activity_Report_' + r.label.replace(/[^0-9A-Za-z]+/g,'_') + '.pdf');
   toast('PDF downloaded');
+ }catch(err){ toast('PDF failed: '+(err&&err.message?err.message:err)); console.error('txReportPDF', err); }
 }
 
 function requestsView(){
@@ -1890,9 +1908,8 @@ async function implantReportPDF(){
   try{
     const blob = await fetch('logo.png').then(r=>r.blob());
     const dataUrl = await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(blob);});
-    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.src=dataUrl;});
-    const hMM = 14, wMM = hMM * (img.width/img.height);
-    doc.addImage(dataUrl, 'PNG', 10, 8, wMM, hMM);
+    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>res(null);setTimeout(()=>res(null),1500);i.src=dataUrl;});
+    if(img){ const hMM = 14, wMM = hMM * (img.width/img.height); doc.addImage(dataUrl, 'PNG', 10, 8, wMM, hMM); }
   }catch(e){}
 
   doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(43,97,104);
@@ -2154,8 +2171,8 @@ async function stkReportPDF(){
   try{
     const blob = await fetch('logo.png').then(x=>x.blob());
     const dataUrl = await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(blob);});
-    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.src=dataUrl;});
-    doc.addImage(dataUrl,'PNG',10,8,14*(img.width/img.height),14);
+    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>res(null);setTimeout(()=>res(null),1500);i.src=dataUrl;});
+    if(img) doc.addImage(dataUrl,'PNG',10,8,14*(img.width/img.height),14);
   }catch(e){}
   doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(43,97,104);
   doc.text(stk.type + ' Stocktake Report', W-10, 13, {align:'right'});
@@ -3152,8 +3169,8 @@ async function assetReportPDF(){
   try{
     const blob = await fetch('logo.png').then(x=>x.blob());
     const dataUrl = await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(blob);});
-    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.src=dataUrl;});
-    doc.addImage(dataUrl,'PNG',10,8,14*(img.width/img.height),14);
+    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>res(null);setTimeout(()=>res(null),1500);i.src=dataUrl;});
+    if(img) doc.addImage(dataUrl,'PNG',10,8,14*(img.width/img.height),14);
   }catch(e){}
   const due = state.assets.filter(a=>{const d=maintDays(a); return d!=null && d<=30;}).length;
   doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(43,97,104);
@@ -3208,7 +3225,6 @@ function procActive(){ return !!activeProc; }
 
 function procView(){
   // admin-only entry point; hidden from nav until activated via this screen
-  if(!can('sticker')){ return '<h1>Procedures</h1><div class="sub">Not available.</div>'; }
   const open = state.procedures.filter(p=>p.status==='Open');
   return `<h1>Procedure case costing</h1>
     <div class="sub">Track exactly what each surgeon and procedure consumes, so you can cost and charge accurately. Consuming here still decrements your normal stock — it just also records the item (and its cost) against the procedure.</div>
@@ -3241,66 +3257,78 @@ function procStartPanel(open){
 
 function procConsolePanel(){
   const p = activeProc;
-  const lines = state.procLines.filter(l=>l.procedureId===p.procedureId);
-  const total = lines.reduce((s,l)=>s+(Number(l.lineCost)||0),0);
-  const missingCost = lines.some(l=>l.unitCost===''||l.unitCost==null);
-  const rows = lines.slice().reverse().map((l,i)=>`<tr>
-    <td data-label=""><strong>${l.name}</strong> <span class="code" style="font-family:var(--mono);font-size:11px">${l.code||''}</span></td>
+  const cart = procCart();
+  const showMoney = (session && session.role==='admin');   // financials ADMIN ONLY (#3)
+  const total = cart.reduce((s,l)=>s+(l.unitCost===''?0:Number(l.unitCost)*l.qty),0);
+  const missingCost = showMoney && cart.some(l=>l.unitCost===''||l.unitCost==null);
+  const rows = cart.map((l,i)=>`<tr>
+    <td data-label=""><strong>${l.name}</strong> <span class="code" style="font-family:var(--mono);font-size:11px">${l.code||l.barcode||''}</span></td>
     <td data-label="Tracker">${TRACKER_LABEL[l.tracker]||l.tracker}</td>
-    <td class="qty" data-label="Qty">${l.qty}</td>
-    <td class="qty" data-label="Unit £">${l.unitCost===''||l.unitCost==null?'—':'£'+Number(l.unitCost).toFixed(2)}</td>
-    <td class="qty" data-label="Line £">${l.lineCost===''||l.lineCost==null?'—':'£'+Number(l.lineCost).toFixed(2)}</td>
-    <td class="rowbtns" data-label=""><button onclick="procRemoveLine(${lines.length-1-i})" style="color:var(--red)">✕</button></td></tr>`).join('');
+    <td data-label="Qty" style="white-space:nowrap">
+      <div class="stepper" style="display:inline-flex;transform:scale(.85);transform-origin:left center">
+        <button type="button" onclick="procLineQty(${i},-1)">−</button>
+        <input value="${l.qty}" readonly style="width:44px">
+        <button type="button" onclick="procLineQty(${i},1)">＋</button>
+      </div></td>
+    ${showMoney?`<td class="qty" data-label="Unit £">${l.unitCost===''||l.unitCost==null?'—':'£'+Number(l.unitCost).toFixed(2)}</td>
+    <td class="qty" data-label="Line £">${l.unitCost===''||l.unitCost==null?'—':'£'+(Number(l.unitCost)*l.qty).toFixed(2)}</td>`:''}
+    <td class="rowbtns" data-label=""><button onclick="procRemoveCartLine(${i})" style="color:var(--red)">✕</button></td></tr>`).join('');
   return `
     <div class="gaspanel" style="border:2px solid var(--pine)">
-      <h2><span class="led green"></span>Procedure in progress — scan to consume</h2>
+      <h2><span class="led green"></span>Procedure in progress — scan to add items</h2>
       <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-bottom:8px">
         <div><div style="font-size:12px;color:var(--ink-soft)">Surgeon</div><strong>${p.surgeon||'—'}</strong></div>
         <div><div style="font-size:12px;color:var(--ink-soft)">Procedure</div><strong>${p.procedure||'—'}</strong></div>
         <div><div style="font-size:12px;color:var(--ink-soft)">Date</div><strong>${p.date?new Date(p.date).toLocaleDateString('en-GB'):'—'}</strong></div>
         ${p.patientRef?`<div><div style="font-size:12px;color:var(--ink-soft)">Patient</div><strong>${p.patientRef}</strong></div>`:''}
-        <div style="margin-left:auto;text-align:right">
+        ${showMoney?`<div style="margin-left:auto;text-align:right">
           <div style="font-size:12px;color:var(--ink-soft)">Running total</div>
-          <strong style="font-size:22px;color:var(--pine)">£${total.toFixed(2)}</strong></div>
+          <strong style="font-size:22px;color:var(--pine)">£${total.toFixed(2)}</strong></div>`:''}
       </div>
       <div class="toolrow" style="background:var(--ok-bg);border-radius:10px;padding:12px">
         <span class="pulse" aria-hidden="true"></span>
         <strong style="color:var(--pine)">Scan any item</strong>
-        <span style="color:var(--ink-soft);font-size:13px">— meds, consumables, instruments or garments; it's detected automatically, consumed from stock, and added below.</span>
+        <span style="color:var(--ink-soft);font-size:13px">— meds, consumables, instruments or garments; detected automatically. Scan the same item again to add more, or use the +/− buttons.</span>
         <button class="btn" style="margin-left:auto" onclick="procManualAdd()">Add without barcode</button>
       </div>
-      ${missingCost?`<div class="sub" style="color:var(--amber);margin-top:8px">⚠ Some items have no unit cost set — their lines show "—". Add a cost on the item to include them in the total.</div>`:''}
-      <table style="margin-top:12px"><thead><tr><th>Item</th><th>Tracker</th><th class="qty">Qty</th><th class="qty">Unit £</th><th class="qty">Line £</th><th></th></tr></thead>
-        <tbody>${rows||'<tr><td colspan="6" style="color:var(--ink-soft)">Nothing consumed yet — scan an item to begin.</td></tr>'}</tbody></table>
+      <div class="sub" style="margin-top:8px;color:var(--ink-soft)">Nothing is taken from stock until you end the procedure — so fix mistakes freely here.</div>
+      ${missingCost?`<div class="sub" style="color:var(--amber)">⚠ Some items have no unit cost set — they'll consume stock but add £0 to the total.</div>`:''}
+      <table style="margin-top:8px"><thead><tr><th>Item</th><th>Tracker</th><th>Qty</th>${showMoney?'<th class="qty">Unit £</th><th class="qty">Line £</th>':''}<th></th></tr></thead>
+        <tbody>${rows||`<tr><td colspan="${showMoney?6:4}" style="color:var(--ink-soft)">Nothing added yet — scan an item to begin.</td></tr>`}</tbody></table>
       <div class="toolrow" style="margin-top:14px">
-        <button class="btn primary" style="padding:12px 24px" onclick="endProc()">■ End procedure</button>
-        <button class="btn" onclick="downloadProcPDF('${p.procedureId}')">Download case sheet PDF</button>
-        <span style="margin-left:auto;color:var(--ink-soft);font-size:13px">${lines.length} line(s)</span>
+        <button class="btn primary" style="padding:12px 24px" onclick="endProc()">■ End procedure &amp; consume stock</button>
+        ${(session&&session.role==='admin')?`<button class="btn" onclick="downloadProcPDF('${p.procedureId}')">Download case sheet PDF</button>`:''}
+        <span style="margin-left:auto;color:var(--ink-soft);font-size:13px">${cart.length} line(s)</span>
       </div>
     </div>`;
 }
 
 function procHistoryPanel(){
+  const showMoney = (session && session.role==='admin');    // financials ADMIN ONLY (#3)
   const closed = state.procedures.filter(p=>p.status!=='Open').slice().reverse().slice(0,20);
   if(!closed.length && !state.procedures.length) return '';
-  // summary by surgeon
-  const bySurgeon = {};
-  state.procedures.forEach(p=>{ const k=p.surgeon||'—'; bySurgeon[k]=(bySurgeon[k]||0)+(Number(p.totalCost)||0); });
-  const sumRows = Object.keys(bySurgeon).sort().map(s=>`<tr><td data-label="">${s}</td>
-    <td class="qty" data-label="Total £">£${bySurgeon[s].toFixed(2)}</td></tr>`).join('');
+  // summary by surgeon (admin only)
+  let summary = '';
+  if(showMoney){
+    const bySurgeon = {};
+    state.procedures.forEach(p=>{ const k=p.surgeon||'—'; bySurgeon[k]=(bySurgeon[k]||0)+(Number(p.totalCost)||0); });
+    const sumRows = Object.keys(bySurgeon).sort().map(s=>`<tr><td data-label="">${s}</td>
+      <td class="qty" data-label="Total £">£${bySurgeon[s].toFixed(2)}</td></tr>`).join('');
+    summary = `<h1 style="font-size:16px;margin-top:26px">Cost by surgeon</h1>
+      <table><thead><tr><th>Surgeon</th><th class="qty">Total consumed £</th></tr></thead><tbody>${sumRows||'<tr><td colspan="2" style="color:var(--ink-soft)">No procedures yet.</td></tr>'}</tbody></table>`;
+  }
   const rows = closed.map(p=>`<tr>
     <td data-label=""><strong>${p.surgeon||'—'}</strong><div style="font-size:12px;color:var(--ink-soft)">${p.procedure||''}</div></td>
     <td data-label="Date">${p.date?new Date(p.date).toLocaleDateString('en-GB'):'—'}</td>
     <td data-label="Patient">${p.patientRef||'—'}</td>
     <td data-label="Status">${p.status}</td>
-    <td class="qty" data-label="Total £">£${(Number(p.totalCost)||0).toFixed(2)}</td>
-    <td class="rowbtns" data-label=""><button onclick="downloadProcPDF('${p.procedureId}')">PDF</button></td></tr>`).join('');
-  return `
-    <h1 style="font-size:16px;margin-top:26px">Cost by surgeon</h1>
-    <table><thead><tr><th>Surgeon</th><th class="qty">Total consumed £</th></tr></thead><tbody>${sumRows||'<tr><td colspan="2" style="color:var(--ink-soft)">No procedures yet.</td></tr>'}</tbody></table>
+    ${showMoney?`<td class="qty" data-label="Total £">£${(Number(p.totalCost)||0).toFixed(2)}</td>`:''}
+    ${(session&&session.role==='admin')?`<td class="rowbtns" data-label=""><button onclick="downloadProcPDF('${p.procedureId}')">PDF</button></td>`:'<td></td>'}</tr>`).join('');
+  const cols = 4 + (showMoney?1:0) + 1;
+  return `${summary}
     <h1 style="font-size:16px;margin-top:22px">Recent procedures</h1>
-    <table><thead><tr><th>Surgeon / procedure</th><th>Date</th><th>Patient</th><th>Status</th><th class="qty">Total £</th><th></th></tr></thead>
-    <tbody>${rows||'<tr><td colspan="6" style="color:var(--ink-soft)">No completed procedures yet.</td></tr>'}</tbody></table>`;
+    <table><thead><tr><th>Surgeon / procedure</th><th>Date</th><th>Patient</th><th>Status</th>${showMoney?'<th class="qty">Total £</th>':''}<th></th></tr></thead>
+    <tbody>${rows||`<tr><td colspan="${cols}" style="color:var(--ink-soft)">No completed procedures yet.</td></tr>`}</tbody></table>`;
 }
 
 async function startProc(){
@@ -3322,68 +3350,109 @@ async function startProc(){
 }
 
 // called from handleScan when a procedure is active
-async function procConsumeScan(it){
-  // consume 1 by default from the correct tracker, decrement stock via normal move, and record the line
-  const qty = 1;
-  // 1) decrement normal stock (reuse the move machinery directly)
-  const prevQty = it.qty;
-  it.qty = Math.max(0, it.qty - qty);
-  state.log.unshift({ts:new Date().toISOString(), dir:'out', name:it.name, code:it.code,
-    qty, by:myName||'', tracker:it.tracker, note:'Consumed for procedure'});
-  // 2) record procedure line locally
-  const line = {procedureId:activeProc.procedureId, tracker:it.tracker, code:it.code||it.barcode||'',
-    name:it.name, qty, unitCost:(it.cost==null?'':it.cost),
-    lineCost:(it.cost==null?'':Math.round(it.cost*qty*100)/100), by:myName||''};
-  state.procLines.push(line);
-  if(activeProc && line.lineCost!=='') activeProc.totalCost = (Number(activeProc.totalCost)||0) + line.lineCost;
-  toast('Consumed: '+it.name+(it.cost!=null?' (£'+(it.cost*qty).toFixed(2)+')':''));
-  render();
-  if(LIVE){
-    try{
-      await api({action:'move', tracker:TRACKER_TAB[it.tracker], row:it._row||null,
-                 code:it.code||it.barcode||it.name, dir:'out', qty, by:myName||'',
-                 batch:'', expiry:''});
-      await api({action:'procConsume', procedureId:activeProc.procedureId, tracker:it.tracker,
-                 code:it.code||it.barcode||'', name:it.name, qty, unitCost:(it.cost==null?'':it.cost), by:myName||''});
-      loadAll();
-    }catch(err){ toast('Not fully saved — '+err.message); loadAll(); }
+// A procedure keeps a local "cart" of consumed lines. Stock is NOT touched on each
+// scan — it is only decremented when the procedure is ended. This means a mistaken
+// item or wrong quantity can be fixed freely during the procedure with no stock impact.
+function procCart(){ return activeProc ? (activeProc._cart = activeProc._cart || []) : []; }
+
+function procConsumeScan(it){
+  const cart = procCart();
+  // if this exact item is already in the cart, bump its quantity instead of duplicating
+  const existing = cart.find(l => l.tracker===it.tracker &&
+    ((it.code && l.code===it.code) || (it.barcode && l.barcode===it.barcode) || l.name===it.name));
+  if(existing){ existing.qty += 1; }
+  else {
+    cart.push({tracker:it.tracker, code:it.code||'', barcode:it.barcode||'',
+      name:it.name, qty:1, unitCost:(it.cost==null?'':it.cost), _row:it._row||null});
   }
+  toast('Added: '+it.name+(it.cost!=null?' (£'+Number(it.cost).toFixed(2)+' each)':''));
+  render();
 }
 
+function procLineQty(ix, delta){
+  const cart = procCart();
+  if(!cart[ix]) return;
+  cart[ix].qty = Math.max(1, cart[ix].qty + delta);
+  render();
+}
+function procRemoveCartLine(ix){
+  const cart = procCart();
+  if(!cart[ix]) return;
+  cart.splice(ix,1);
+  render();
+}
 function procManualAdd(){
-  // pick an item from any tracker by name, then consume it
-  const name = prompt('Type part of the item name to consume:');
-  if(!name) return;
-  const matches = state.items.filter(i=>!i.obsolete && i.name.toLowerCase().includes(name.toLowerCase()));
-  if(!matches.length){ toast('No item matches "'+name+'"'); return; }
-  const it = matches[0];
-  procConsumeScan(it);
+  // open a searchable picker instead of blindly taking the first match (see #2)
+  openProcPicker();
 }
-
-async function procRemoveLine(ix){
-  const lines = state.procLines.filter(l=>l.procedureId===activeProc.procedureId);
-  const line = lines[ix];
-  if(!line) return;
-  if(!confirm('Remove "'+line.name+'" from this procedure? (This does not add the stock back — adjust stock separately if needed.)')) return;
-  const globalIx = state.procLines.indexOf(line);
-  if(globalIx>=0) state.procLines.splice(globalIx,1);
-  if(line.lineCost!=='') activeProc.totalCost = Math.max(0,(Number(activeProc.totalCost)||0) - Number(line.lineCost));
-  render(); toast('Line removed');
-  // note: backend line removal intentionally omitted to keep an audit trail; total re-syncs on reload
+function openProcPicker(){
+  $('#procPickSearch').value='';
+  renderProcPicker();
+  procPickerDlg.showModal();
+  setTimeout(()=>$('#procPickSearch').focus(),50);
+}
+function renderProcPicker(){
+  const q = ($('#procPickSearch').value||'').toLowerCase().trim();
+  let pool = state.items.filter(i=>!i.obsolete && i.tracker!=='instruments' || (!i.obsolete && i.tracker==='instruments'));
+  pool = state.items.filter(i=>!i.obsolete);
+  let list;
+  if(!q){ list = pool.slice(0,40); }
+  else {
+    // exact code match first
+    const exact = pool.filter(i=>(i.code||'').toLowerCase()===q || (i.barcode||'').toLowerCase()===q);
+    const partial = pool.filter(i=>!exact.includes(i) &&
+      (i.name.toLowerCase().includes(q) || (i.code||'').toLowerCase().includes(q)));
+    list = [...exact, ...partial].slice(0,40);
+  }
+  const rows = list.map(it=>{
+    const ix = state.items.indexOf(it);
+    return `<div style="padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;justify-content:space-between;gap:10px"
+      onclick="procPickChoose(${ix})">
+      <span><strong>${it.name}</strong> <span style="font-family:var(--mono);font-size:11px;color:var(--ink-soft)">${it.code||it.barcode||''}</span></span>
+      <span style="font-size:12px;color:var(--ink-soft);white-space:nowrap">${TRACKER_LABEL[it.tracker]}${it.loc?' · '+it.loc:''}</span></div>`;
+  }).join('');
+  $('#procPickList').innerHTML = rows ||
+    '<div style="padding:14px;color:var(--ink-soft)">No item matches — try fewer letters.</div>';
+}
+function procPickChoose(ix){
+  const it = state.items[ix];
+  if(!it) return;
+  procConsumeScan(it);
+  procPickerDlg.close();
 }
 
 async function endProc(){
   if(!activeProc) return;
-  if(!confirm('End this procedure? You can still see it in the history and download its case sheet.')) return;
+  const cart = procCart();
+  const total = cart.reduce((s,l)=>s+(l.unitCost===''?0:Number(l.unitCost)*l.qty),0);
+  if(!confirm('End this procedure?\n\n'+cart.length+' item line(s) will now be consumed from stock'+
+    (total?' (£'+total.toFixed(2)+' total)':'')+'. This is when stock is actually decremented.')) return;
   const id = activeProc.procedureId;
   const p = state.procedures.find(x=>x.procedureId===id);
-  if(p) p.status='Closed';
-  const done = activeProc;
+  if(p){ p.status='Closed'; p.totalCost = total; }
+  const finishing = activeProc;
   activeProc = null;
-  render(); toast('Procedure ended');
+  render(); toast('Procedure ended — consuming stock…');
   if(LIVE){
-    try{ await api({action:'procEnd', procedureId:id, by:myName||''}); loadAll(); }
-    catch(err){ toast('Not saved — '+err.message); loadAll(); }
+    try{
+      // now decrement stock for every cart line AND record each as a procedure line
+      for(const l of cart){
+        await api({action:'move', tracker:TRACKER_TAB[l.tracker], row:l._row||null,
+                   code:l.code||l.barcode||l.name, dir:'out', qty:l.qty, by:myName||'',
+                   batch:'', expiry:''});
+        await api({action:'procConsume', procedureId:id, tracker:l.tracker,
+                   code:l.code||l.barcode||'', name:l.name, qty:l.qty,
+                   unitCost:(l.unitCost===''?'':l.unitCost), by:myName||''});
+      }
+      await api({action:'procEnd', procedureId:id, by:myName||''});
+      loadAll();
+    }catch(err){ toast('Some items may not have saved — '+err.message); loadAll(); }
+  } else {
+    // demo mode: reflect stock locally
+    cart.forEach(l=>{ const it = state.items.find(i=>i.tracker===l.tracker &&
+      ((l.code&&i.code===l.code)||(l.barcode&&i.barcode===l.barcode)||i.name===l.name));
+      if(it) it.qty = Math.max(0, it.qty - l.qty); });
+    render();
   }
 }
 
@@ -3392,14 +3461,16 @@ async function downloadProcPDF(procId){
   const lines = state.procLines.filter(l=>l.procedureId===procId);
   if(!p){ toast('Procedure not found'); return; }
   const total = lines.reduce((s,l)=>s+(Number(l.lineCost)||0),0);
+  if(!window.jspdf){ toast('PDF library still loading — try again in a second'); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+  if(typeof doc.autoTable!=='function'){ toast('PDF table plugin failed to load — refresh the page and try again'); return; }
   const W = doc.internal.pageSize.getWidth();
   try{
     const blob = await fetch('logo.png').then(x=>x.blob());
     const dataUrl = await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(blob);});
-    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.src=dataUrl;});
-    doc.addImage(dataUrl,'PNG',12,10,16*(img.width/img.height),16);
+    const img = await new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>res(null);setTimeout(()=>res(null),1500);i.src=dataUrl;});
+    if(img) doc.addImage(dataUrl,'PNG',12,10,16*(img.width/img.height),16);
   }catch(e){}
   doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(43,97,104);
   doc.text('Procedure Case Sheet', W-12, 15, {align:'right'});
@@ -3416,8 +3487,10 @@ async function downloadProcPDF(procId){
       l.lineCost===''||l.lineCost==null?'—':Number(l.lineCost).toFixed(2)]),
     styles:{fontSize:9,cellPadding:2.5}, headStyles:{fillColor:[43,97,104],textColor:255},
     foot:[['','','','Total','£'+total.toFixed(2)]], footStyles:{fillColor:[240,236,220],textColor:[43,97,104],fontStyle:'bold'} });
-  doc.save('Procedure_'+(p.surgeon||'case').replace(/[^A-Za-z]+/g,'_')+'_'+(p.date||'')+'.pdf');
-  toast('Case sheet downloaded');
+  try{
+    doc.save('Procedure_'+(p.surgeon||'case').replace(/[^A-Za-z]+/g,'_')+'_'+(p.date||'')+'.pdf');
+    toast('Case sheet downloaded');
+  }catch(err){ toast('Could not download PDF — '+err.message); }
 }
 
 /* ---------------- sticker printer (admin) ---------------- */
@@ -3520,10 +3593,12 @@ function stkCodesTab(){
   const tr = window._skTracker||'meds';
   const q = (window._skQ||'').toLowerCase();
   const cat = window._skCat||'';
+  const loc = window._skLoc||'';
   const pool = state.items.filter(i=>i.tracker===tr && !i.obsolete);
   const cats = [...new Set(pool.map(i=>i.cat).filter(Boolean))].sort();
+  const locs = [...new Set(pool.map(i=>i.loc).filter(Boolean))].sort();
   const list = pool.filter(i=>(!q || i.name.toLowerCase().includes(q) || (i.code||'').toLowerCase().includes(q)) &&
-    (!cat || i.cat===cat));
+    (!cat || i.cat===cat) && (!loc || i.loc===loc));
   const allSel = list.length && list.every(i=>stkSel.has(state.items.indexOf(i)));
   const rows = list.slice(0,500).map(i=>{
     const ix = state.items.indexOf(i);
@@ -3532,19 +3607,28 @@ function stkCodesTab(){
         <input type="checkbox" ${stkSel.has(ix)?'checked':''} onchange="toggleSel(stkSel,${ix})" style="width:18px;height:18px">
         <strong>${i.name}</strong></td>
       <td class="code" data-label="Code">${i.code||i.barcode||'—'}</td>
+      <td data-label="Location">${i.loc||'—'}</td>
       <td data-label="Category">${i.cat||'—'}</td></tr>`;
   }).join('');
   return `
     <div class="toolrow">
-      <select onchange="window._skTracker=this.value;window._skCat='';render()">
+      <select onchange="window._skTracker=this.value;window._skCat='';window._skLoc='';render()">
         <option value="meds" ${tr==='meds'?'selected':''}>Medicines</option>
         <option value="consumables" ${tr==='consumables'?'selected':''}>Consumables</option>
         <option value="garments" ${tr==='garments'?'selected':''}>Garments</option>
         <option value="linen" ${tr==='linen'?'selected':''}>Linen</option>
       </select>
+      <select onchange="window._skLoc=this.value;render()">
+        <option value="">All locations</option>
+        ${locs.map(l=>`<option ${l===loc?'selected':''}>${l}</option>`).join('')}
+      </select>
       <select onchange="window._skCat=this.value;render()">
         <option value="">All categories</option>
         ${cats.map(c=>`<option ${c===cat?'selected':''}>${c}</option>`).join('')}
+      </select>
+      <select onchange="window._skLoc=this.value;render()">
+        <option value="">All locations</option>
+        ${locs.map(l=>`<option ${l===loc?'selected':''}>${l}</option>`).join('')}
       </select>
       <input type="search" placeholder="Search name or code…" value="${window._skQ||''}"
              oninput="window._skQ=this.value;render()">
@@ -3561,13 +3645,13 @@ function stkCodesTab(){
       <button class="btn primary" style="margin-left:auto" onclick="printCodeStickers()">🖨 Print sheet (21/page)</button>
       <button class="btn" onclick="downloadCodePDF()">Download PDF</button>
     </div>
-    <table><thead><tr><th>Item</th><th>Code</th><th>Category</th></tr></thead>
+    <table><thead><tr><th>Item</th><th>Code</th><th>Location</th><th>Category</th></tr></thead>
     <tbody>${rows||'<tr><td colspan="3" style="color:var(--ink-soft)">Nothing matches.</td></tr>'}</tbody></table>`;
 }
 function stkSelAll(on){
-  const tr = window._skTracker||'meds', q=(window._skQ||'').toLowerCase(), cat=window._skCat||'';
+  const tr = window._skTracker||'meds', q=(window._skQ||'').toLowerCase(), cat=window._skCat||'', loc=window._skLoc||'';
   if(on) state.items.forEach((i,ix)=>{ if(i.tracker===tr && !i.obsolete &&
-    (!q||i.name.toLowerCase().includes(q)||(i.code||'').toLowerCase().includes(q)) && (!cat||i.cat===cat)) stkSel.add(ix); });
+    (!q||i.name.toLowerCase().includes(q)||(i.code||'').toLowerCase().includes(q)) && (!cat||i.cat===cat) && (!loc||i.loc===loc)) stkSel.add(ix); });
   else stkSel.clear();
   render();
 }
@@ -3919,7 +4003,7 @@ function viewAllowed(v){
   if(v==='stores') return can('stores');
   if(v==='assets') return can('assets');
   if(v==='stickers') return can('sticker');
-  if(v==='procedures') return can('sticker');
+  if(v==='procedures') return true;   // all roles can run procedures (financials hidden inside)
   return true;
 }
 function applyNavPerms(){

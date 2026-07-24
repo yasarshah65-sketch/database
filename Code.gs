@@ -35,7 +35,8 @@ const ACTION_ROLE = {
   moveStore:'admin', storeAdd:'admin', storeRemove:'admin', clearBarcode:'admin',
   assetAdd:'admin', assetUpdate:'admin',
   useEdit:'admin', useDelete:'admin',
-  setSetting:'admin'
+  setSetting:'admin',
+  procStart:'common', procConsume:'common', procEnd:'common'
 };
 const ROLE_RANK = { common: 0, staff: 1, admin: 2 };
 
@@ -84,6 +85,9 @@ function doPost(e) {
       case 'useEdit':     return json_(useEdit_(req));
       case 'useDelete':   return json_(useDelete_(req));
       case 'setSetting':  return json_(setSetting_(req));
+      case 'procStart':   return json_(procStart_(req));
+      case 'procConsume': return json_(procConsume_(req));
+      case 'procEnd':     return json_(procEnd_(req));
       case 'ack':       return json_(ackAlert_(req));
       case 'stocktake': return json_(stocktake_(req));
       default:          return json_({ ok: false, error: 'Unknown action' });
@@ -264,6 +268,8 @@ function getAll_(session) {
     assets: (session && session.role === 'admin') ? readTab_('Assets') : [],
     gasChecks: readTab_('GasChecks').slice(-180),
     settings: readTab_('Settings'),
+    procedures: procForRole_(session),
+    procLines: (session && session.role === 'admin') ? readTab_('ProcedureLines').slice(-500) : [],
     serverTime: new Date().toISOString()
   };
 }
@@ -350,42 +356,49 @@ function respondRequest_(q) {
 
 function updateItem_(q) {
   // q: {tracker, row, fields:{header:value,...}} — updates one item row in place.
-  // Resolves the row defensively so an edit can NEVER create a duplicate:
-  // trust q.row only if it still holds the same Code/Barcode; otherwise re-find it.
+  // Row resolution priority (so an edit can NEVER duplicate, even for meds with blank codes):
+  //   1. If q.row is in range AND the row's current identity matches what we're editing
+  //      (by Code, or Barcode, or original Name), trust it. This is the normal path.
+  //   2. Otherwise re-find by original Code, then original Barcode, then original Name.
+  //   3. If still nothing, ERROR (never append — appending is what caused duplicates).
   const sh = ss_().getSheetByName(q.tracker);
   if (!sh) return { ok: false, error: 'No tab: ' + q.tracker };
   const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
   const cCode = head.indexOf('Code'), cBar = head.indexOf('Barcode'), cName = head.indexOf('Name');
-  const wantCode = q.fields && q.fields.Code, wantBar = q.fields && q.fields.Barcode;
   const last = sh.getLastRow();
 
-  function rowMatches(r) {
+  const oc = String((q._origCode != null ? q._origCode : (q.fields && q.fields.Code)) || '').trim();
+  const ob = String((q._origBar != null ? q._origBar : (q.fields && q.fields.Barcode)) || '').trim();
+  const on = String((q._origName != null ? q._origName : (q.fields && q.fields.Name)) || '').trim().toLowerCase();
+
+  function idAt(r) {
     const vals = sh.getRange(r, 1, 1, head.length).getValues()[0];
-    const vc = cCode >= 0 ? String(vals[cCode] || '').trim() : '';
-    const vb = cBar >= 0 ? String(vals[cBar] || '').trim() : '';
-    if (wantCode && vc && vc === String(wantCode).trim()) return true;
-    if (wantBar && vb && vb === String(wantBar).trim()) return true;
+    return {
+      code: cCode >= 0 ? String(vals[cCode] || '').trim() : '',
+      bar:  cBar  >= 0 ? String(vals[cBar]  || '').trim() : '',
+      name: cName >= 0 ? String(vals[cName] || '').trim().toLowerCase() : ''
+    };
+  }
+  function matches(id) {
+    if (oc && id.code && id.code === oc) return true;
+    if (ob && id.bar && id.bar === ob) return true;
+    // name match only when there is no code/barcode to disambiguate (typical for meds)
+    if (!oc && !ob && on && id.name === on) return true;
     return false;
   }
 
-  let row = Number(q.row) || 0;
-  // if the supplied row is out of range, or its identifiers don't match what we're editing, re-find it
-  const needFind = !row || row < 2 || row > last ||
-    ((wantCode || wantBar) && !rowMatches(row));
-  if (needFind && (wantCode || wantBar || (q._origCode || q._origBar || q._origName))) {
-    const oc = String(q._origCode || wantCode || '').trim();
-    const ob = String(q._origBar || wantBar || '').trim();
-    const on = String(q._origName || (q.fields && q.fields.Name) || '').trim().toLowerCase();
-    row = 0;
-    for (let r = 2; r <= last; r++) {
-      const vals = sh.getRange(r, 1, 1, head.length).getValues()[0];
-      const vc = cCode >= 0 ? String(vals[cCode] || '').trim() : '';
-      const vb = cBar >= 0 ? String(vals[cBar] || '').trim() : '';
-      const vn = cName >= 0 ? String(vals[cName] || '').trim().toLowerCase() : '';
-      if ((oc && vc === oc) || (ob && vb === ob) || (on && vn === on)) { row = r; break; }
+  let row = 0;
+  const supplied = Number(q.row) || 0;
+  if (supplied >= 2 && supplied <= last && matches(idAt(supplied))) {
+    row = supplied;                                  // priority 1: supplied row is correct
+  } else {
+    for (let r = 2; r <= last; r++) {                // priority 2: re-find
+      if (matches(idAt(r))) { row = r; break; }
     }
+    // last resort: if we have a plain name and a valid supplied row whose name equals it, use it
+    if (!row && supplied >= 2 && supplied <= last && on && idAt(supplied).name === on) row = supplied;
   }
-  if (!row) return { ok: false, error: 'Could not locate the item to update (no matching row)' };
+  if (!row) return { ok: false, error: 'Could not locate the item to update — please refresh and try again' };
   q.row = row;
 
   // build a human-readable change note by comparing old vs new
@@ -858,6 +871,19 @@ function migrate() {
       .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
     gcx.setFrozenRows(1);
   }
+  // 1d6. Procedure case-costing tabs
+  if (!ss.getSheetByName('Procedures')) {
+    const pr = ss.insertSheet('Procedures');
+    pr.getRange(1, 1, 1, PROC_HEADERS.length).setValues([PROC_HEADERS])
+      .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+    pr.setFrozenRows(1);
+  }
+  if (!ss.getSheetByName('ProcedureLines')) {
+    const pl = ss.insertSheet('ProcedureLines');
+    pl.getRange(1, 1, 1, PROCLINE_HEADERS.length).setValues([PROCLINE_HEADERS])
+      .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+    pl.setFrozenRows(1);
+  }
   // 1e. Transactions tab: ensure Activity column
   const tx = ss.getSheetByName('Transactions');
   if (tx) {
@@ -1000,6 +1026,128 @@ function gasCheckAdd_(q) {
       (f.Air_LeftBank !== undefined && f.Air_LeftBank !== '' ? ' · Air L' + f.Air_LeftBank + '/R' + (f.Air_RightBank ?? '—') : '') +
       ' · Pumps ' + (f.Vacuum_Status || '—')});
   return { ok: true, row: sh.getLastRow() };
+}
+
+/* ======================= procedure case costing ========================= */
+
+const PROC_HEADERS = ['ProcedureID','Date','Surgeon','Procedure','PatientRef','StartedBy',
+  'Status','StartTime','EndTime','TotalCost','Notes'];
+const PROCLINE_HEADERS = ['ProcedureID','Timestamp','Tracker','Code','Name','Qty','UnitCost','LineCost','By'];
+
+function procForRole_(session) {
+  const rows = readTab_('Procedures');
+  if (session && session.role === 'admin') return rows;
+  // non-admin: hide the financial total
+  return rows.map(function (r) { var o = {}; for (var k in r) if (k !== 'TotalCost') o[k] = r[k]; return o; });
+}
+
+function procForRole_(session) {
+  const rows = readTab_('Procedures');
+  if (!session) return [];
+  if (session.role === 'admin') return rows;
+  return rows.map(function (r) {
+    var o = {}; Object.keys(r).forEach(function (k) { o[k] = r[k]; });
+    o.TotalCost = ''; return o;
+  });
+}
+function procLinesForRole_(session) {
+  const rows = readTab_('ProcedureLines').slice(-500);
+  if (!session) return [];
+  if (session.role === 'admin') return rows;
+  return rows.map(function (r) {
+    var o = {}; Object.keys(r).forEach(function (k) { o[k] = r[k]; });
+    o.UnitCost = ''; o.LineCost = ''; return o;
+  });
+}
+
+function procStart_(q) {
+  const sh = ss_().getSheetByName('Procedures');
+  if (!sh) return { ok: false, error: 'Procedures tab missing — run migrate()' };
+  const id = 'PROC-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const map = { ProcedureID: id, Date: q.date ? new Date(q.date) : new Date(),
+    Surgeon: q.surgeon || '', Procedure: q.procedure || '', PatientRef: q.patientRef || '',
+    StartedBy: q.by || CURRENT_USER || '', Status: 'Open', StartTime: new Date(),
+    EndTime: '', TotalCost: 0, Notes: q.notes || '' };
+  sh.appendRow(head.map(h => map[h] !== undefined ? map[h] : ''));
+  logAct_('Procedure started', {tracker: 'Procedure', code: id,
+    name: (q.surgeon || '') + ' — ' + (q.procedure || ''), by: q.by,
+    note: 'Case costing opened' + (q.patientRef ? ' · ' + q.patientRef : '')});
+  return { ok: true, procedureId: id };
+}
+
+function procConsume_(q) {
+  // q: {procedureId, tracker, code, name, qty, by}
+  // Records a line against the procedure. Stock is decremented separately by the
+  // normal move action, so this does NOT touch stock itself.
+  // The unit cost is looked up authoritatively from the item (the client may not
+  // have it — e.g. scrub 'common' logins have costs stripped), so costing is correct
+  // no matter who runs the procedure.
+  const sh = ss_().getSheetByName('ProcedureLines');
+  if (!sh) return { ok: false, error: 'ProcedureLines tab missing — run migrate()' };
+  const qty = Math.max(1, Number(q.qty) || 1);
+  let uc = '';
+  try {
+    const tabName = q.tracker && q.tracker.charAt(0).toUpperCase() + q.tracker.slice(1);
+    const its = ss_().getSheetByName(tabName);
+    if (its) {
+      const vals = its.getDataRange().getValues();
+      const head = vals[0].map(String);
+      const cCode = head.indexOf('Code'), cBar = head.indexOf('Barcode'),
+            cName = head.indexOf('Name'), cCost = head.indexOf('UnitCost');
+      for (let r = 1; r < vals.length; r++) {
+        const vc = cCode >= 0 ? String(vals[r][cCode] || '').trim() : '';
+        const vb = cBar >= 0 ? String(vals[r][cBar] || '').trim() : '';
+        const vn = cName >= 0 ? String(vals[r][cName] || '').trim() : '';
+        if ((q.code && (vc === String(q.code).trim() || vb === String(q.code).trim())) ||
+            (!q.code && q.name && vn === String(q.name).trim())) {
+          const cv = cCost >= 0 ? vals[r][cCost] : '';
+          uc = (cv === '' || cv == null) ? '' : Number(cv);
+          break;
+        }
+      }
+    }
+  } catch (e) { uc = ''; }
+  const line = uc === '' ? '' : Math.round(uc * qty * 100) / 100;
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const map = { ProcedureID: q.procedureId || '', Timestamp: new Date(), Tracker: q.tracker || '',
+    Code: q.code || '', Name: q.name || '', Qty: qty, UnitCost: uc, LineCost: line, By: q.by || CURRENT_USER || '' };
+  sh.appendRow(head.map(h => map[h] !== undefined ? map[h] : ''));
+  // keep the procedure's running total up to date
+  if (line !== '') {
+    const ps = ss_().getSheetByName('Procedures');
+    const pv = ps.getDataRange().getValues();
+    const pHead = pv[0].map(String);
+    const idC = pHead.indexOf('ProcedureID'), tcC = pHead.indexOf('TotalCost');
+    for (let r = 1; r < pv.length; r++) {
+      if (String(pv[r][idC]) === String(q.procedureId)) {
+        const cur = Number(pv[r][tcC]) || 0;
+        ps.getRange(r + 1, tcC + 1).setValue(Math.round((cur + line) * 100) / 100);
+        break;
+      }
+    }
+  }
+  return { ok: true, lineCost: line };
+}
+
+function procEnd_(q) {
+  const sh = ss_().getSheetByName('Procedures');
+  if (!sh) return { ok: false, error: 'Procedures tab missing' };
+  const vals = sh.getDataRange().getValues();
+  const head = vals[0].map(String);
+  const idC = head.indexOf('ProcedureID'), stC = head.indexOf('Status'),
+        etC = head.indexOf('EndTime'), tcC = head.indexOf('TotalCost');
+  for (let r = 1; r < vals.length; r++) {
+    if (String(vals[r][idC]) === String(q.procedureId)) {
+      sh.getRange(r + 1, stC + 1).setValue('Closed');
+      sh.getRange(r + 1, etC + 1).setValue(new Date());
+      logAct_('Procedure ended', {tracker: 'Procedure', code: q.procedureId,
+        name: String(vals[r][head.indexOf('Surgeon')] || '') + ' — ' + String(vals[r][head.indexOf('Procedure')] || ''),
+        by: q.by, note: 'Total £' + (Number(vals[r][tcC]) || 0).toFixed(2)});
+      return { ok: true, total: Number(vals[r][tcC]) || 0 };
+    }
+  }
+  return { ok: false, error: 'Procedure not found' };
 }
 
 /* =============================== assets ================================= */
