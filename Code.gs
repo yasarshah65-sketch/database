@@ -36,7 +36,8 @@ const ACTION_ROLE = {
   assetAdd:'admin', assetUpdate:'admin',
   useEdit:'admin', useDelete:'admin',
   setSetting:'admin',
-  procStart:'common', procConsume:'common', procEnd:'common'
+  procStart:'common', procConsume:'common', procEnd:'common', procConsumeBatch:'common',
+  procSaveCart:'common', procGetCart:'common'
 };
 const ROLE_RANK = { common: 0, staff: 1, admin: 2 };
 
@@ -88,6 +89,9 @@ function doPost(e) {
       case 'procStart':   return json_(procStart_(req));
       case 'procConsume': return json_(procConsume_(req));
       case 'procEnd':     return json_(procEnd_(req));
+      case 'procConsumeBatch': return json_(procConsumeBatch_(req));
+      case 'procSaveCart': return json_(procSaveCart_(req));
+      case 'procGetCart':  return json_(procGetCart_(req));
       case 'ack':       return json_(ackAlert_(req));
       case 'stocktake': return json_(stocktake_(req));
       default:          return json_({ ok: false, error: 'Unknown action' });
@@ -180,6 +184,32 @@ function addItem_(q) {
   if (!sh) return { ok: false, error: 'No tab: ' + q.tracker };
   if (!q.fields || !q.fields.Name) return { ok: false, error: 'Name required' };
   const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+
+  // ---- guard against accidental duplicates ----
+  // If a row already exists with the same non-blank Code, or same non-blank Barcode, or
+  // (when this item has no code/barcode) the same Name, treat this as an UPDATE of that row
+  // instead of appending a second copy. This makes duplicates impossible even if the client
+  // mistakenly calls addItem for an item that already exists.
+  {
+    const all = sh.getDataRange().getValues();
+    const cCode = head.indexOf('Code'), cBar = head.indexOf('Barcode'), cName = head.indexOf('Name');
+    const nc = String(q.fields.Code || '').trim();
+    const nb = String(q.fields.Barcode || '').trim();
+    const nn = String(q.fields.Name || '').trim().toLowerCase();
+    for (let r = 1; r < all.length; r++) {
+      const vc = cCode >= 0 ? String(all[r][cCode] || '').trim() : '';
+      const vb = cBar >= 0 ? String(all[r][cBar] || '').trim() : '';
+      const vn = cName >= 0 ? String(all[r][cName] || '').trim().toLowerCase() : '';
+      const hit = (nc && vc && nc === vc) || (nb && vb && nb === vb) ||
+                  (!nc && !nb && nn && vn === nn);
+      if (hit) {
+        // update that existing row instead of adding a duplicate
+        return updateItem_({ tracker: q.tracker, row: r + 1, fields: q.fields,
+          _origCode: vc, _origBar: vb, _origName: all[r][cName] });
+      }
+    }
+  }
+
   const row = head.map(h => {
     let v = q.fields[h];
     if (v === undefined || v === null) return '';
@@ -878,6 +908,14 @@ function migrate() {
       .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
     pr.setFrozenRows(1);
   }
+  // ensure CartJSON column exists on Procedures (temporary-save security net)
+  {
+    const pr = ss.getSheetByName('Procedures');
+    const ph = pr.getRange(1, 1, 1, Math.max(pr.getLastColumn(),1)).getValues()[0].map(String);
+    if (ph.indexOf('CartJSON') < 0)
+      pr.getRange(1, pr.getLastColumn() + 1).setValue('CartJSON')
+        .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+  }
   if (!ss.getSheetByName('ProcedureLines')) {
     const pl = ss.insertSheet('ProcedureLines');
     pl.getRange(1, 1, 1, PROCLINE_HEADERS.length).setValues([PROCLINE_HEADERS])
@@ -1031,7 +1069,7 @@ function gasCheckAdd_(q) {
 /* ======================= procedure case costing ========================= */
 
 const PROC_HEADERS = ['ProcedureID','Date','Surgeon','Procedure','PatientRef','StartedBy',
-  'Status','StartTime','EndTime','TotalCost','Notes'];
+  'Status','StartTime','EndTime','TotalCost','Notes','CartJSON'];
 const PROCLINE_HEADERS = ['ProcedureID','Timestamp','Tracker','Code','Name','Qty','UnitCost','LineCost','By'];
 
 function procForRole_(session) {
@@ -1128,6 +1166,123 @@ function procConsume_(q) {
     }
   }
   return { ok: true, lineCost: line };
+}
+
+// ---- security net: persist an in-progress cart to the sheet (temporary save) ----
+// Stored as a JSON blob on the Procedures row (CartJSON column), so a refresh/crash
+// never loses scanned items. Does NOT touch stock.
+function procSaveCart_(q) {
+  // q: {procedureId, cart:[{tracker,code,barcode,name,qty,unitCost}], by}
+  const sh = ss_().getSheetByName('Procedures');
+  if (!sh) return { ok: false, error: 'Procedures tab missing' };
+  const vals = sh.getDataRange().getValues();
+  const head = vals[0].map(String);
+  let cCart = head.indexOf('CartJSON');
+  if (cCart < 0) {                                   // add the column on demand
+    cCart = head.length;
+    sh.getRange(1, cCart + 1).setValue('CartJSON')
+      .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+  }
+  const idC = head.indexOf('ProcedureID');
+  for (let r = 1; r < vals.length; r++) {
+    if (String(vals[r][idC]) === String(q.procedureId)) {
+      sh.getRange(r + 1, cCart + 1).setValue(JSON.stringify(q.cart || []));
+      return { ok: true, saved: (q.cart || []).length };
+    }
+  }
+  return { ok: false, error: 'Procedure not found' };
+}
+
+function procGetCart_(q) {
+  const sh = ss_().getSheetByName('Procedures');
+  if (!sh) return { ok: false, cart: [] };
+  const vals = sh.getDataRange().getValues();
+  const head = vals[0].map(String);
+  const idC = head.indexOf('ProcedureID'), cCart = head.indexOf('CartJSON');
+  if (cCart < 0) return { ok: true, cart: [] };
+  for (let r = 1; r < vals.length; r++) {
+    if (String(vals[r][idC]) === String(q.procedureId)) {
+      try { return { ok: true, cart: JSON.parse(vals[r][cCart] || '[]') }; }
+      catch (e) { return { ok: true, cart: [] }; }
+    }
+  }
+  return { ok: true, cart: [] };
+}
+
+// ---- atomic end: decrement stock for every line, record lines, close — all or clearly reported ----
+function procConsumeBatch_(q) {
+  // q: {procedureId, lines:[{tracker,code,barcode,name,qty}], by}
+  // Runs entirely server-side in one request so a client refresh can't interrupt it.
+  const lines = q.lines || [];
+  const results = [], failed = [];
+  const lineSheet = ss_().getSheetByName('ProcedureLines');
+  const lineHead = lineSheet.getRange(1, 1, 1, lineSheet.getLastColumn()).getValues()[0].map(String);
+  let runningTotal = 0;
+
+  lines.forEach(function (l) {
+    const qty = Math.max(1, Number(l.qty) || 1);
+    // resolve the item row: prefer code/barcode, fall back to exact name (blank-code meds)
+    let it = null;
+    try {
+      const tabName = l.tracker.charAt(0).toUpperCase() + l.tracker.slice(1);
+      const sh = ss_().getSheetByName(tabName);
+      if (!sh) throw 'no tab';
+      const vals = sh.getDataRange().getValues();
+      const head = vals[0].map(String);
+      const cCode = head.indexOf('Code'), cBar = head.indexOf('Barcode'),
+            cName = head.indexOf('Name'), cQty = head.indexOf('Qty'), cCost = head.indexOf('UnitCost');
+      const wantCode = String(l.code || '').trim(), wantBar = String(l.barcode || '').trim(),
+            wantName = String(l.name || '').trim().toLowerCase();
+      let rowIdx = -1, byName = -1;
+      for (let r = 1; r < vals.length; r++) {
+        const vc = cCode >= 0 ? String(vals[r][cCode] || '').trim() : '';
+        const vb = cBar >= 0 ? String(vals[r][cBar] || '').trim() : '';
+        const vn = cName >= 0 ? String(vals[r][cName] || '').trim().toLowerCase() : '';
+        if ((wantCode && vc && vc === wantCode) || (wantBar && vb && vb === wantBar)) { rowIdx = r; break; }
+        if (byName < 0 && wantName && vn === wantName) byName = r;
+      }
+      if (rowIdx < 0) rowIdx = byName;
+      if (rowIdx < 0) { failed.push({ name: l.name, reason: 'not found in ' + tabName }); return; }
+      // decrement stock
+      const cur = Number(vals[rowIdx][cQty]) || 0;
+      const newQty = cur - qty;
+      sh.getRange(rowIdx + 1, cQty + 1).setValue(newQty < 0 ? 0 : newQty);
+      const uc = cCost >= 0 && vals[rowIdx][cCost] !== '' && vals[rowIdx][cCost] != null ? Number(vals[rowIdx][cCost]) : '';
+      const lineCost = uc === '' ? '' : Math.round(uc * qty * 100) / 100;
+      if (lineCost !== '') runningTotal += lineCost;
+      // record procedure line
+      const map = { ProcedureID: q.procedureId, Timestamp: new Date(), Tracker: l.tracker,
+        Code: l.code || '', Name: l.name || '', Qty: qty, UnitCost: uc, LineCost: lineCost, By: q.by || CURRENT_USER || '' };
+      lineSheet.appendRow(lineHead.map(function (h) { return map[h] !== undefined ? map[h] : ''; }));
+      // log the stock movement
+      logAct_('Stock out', { dir: 'out', tracker: tabName, code: l.code || '', name: l.name,
+        qty: qty, by: q.by, note: 'Consumed — procedure ' + q.procedureId });
+      results.push({ name: l.name, qty: qty, newQty: newQty < 0 ? 0 : newQty });
+    } catch (e) {
+      failed.push({ name: l.name, reason: String(e) });
+    }
+  });
+
+  // update procedure total + close it (even if some lines failed, we close and report)
+  const ps = ss_().getSheetByName('Procedures');
+  const pv = ps.getDataRange().getValues();
+  const pHead = pv[0].map(String);
+  const idC = pHead.indexOf('ProcedureID'), tcC = pHead.indexOf('TotalCost'),
+        stC = pHead.indexOf('Status'), etC = pHead.indexOf('EndTime'), cartC = pHead.indexOf('CartJSON');
+  for (let r = 1; r < pv.length; r++) {
+    if (String(pv[r][idC]) === String(q.procedureId)) {
+      if (tcC >= 0) ps.getRange(r + 1, tcC + 1).setValue(Math.round(runningTotal * 100) / 100);
+      if (stC >= 0) ps.getRange(r + 1, stC + 1).setValue('Closed');
+      if (etC >= 0) ps.getRange(r + 1, etC + 1).setValue(new Date());
+      if (cartC >= 0) ps.getRange(r + 1, cartC + 1).setValue('');   // clear saved cart
+      break;
+    }
+  }
+  logAct_('Procedure ended', { tracker: 'Procedure', code: q.procedureId,
+    name: 'Case closed', by: q.by,
+    note: results.length + ' line(s) consumed · Total £' + runningTotal.toFixed(2) +
+      (failed.length ? ' · ' + failed.length + ' FAILED' : '') });
+  return { ok: failed.length === 0, consumed: results.length, failed: failed, total: runningTotal };
 }
 
 function procEnd_(q) {

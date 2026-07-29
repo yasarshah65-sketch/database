@@ -3291,13 +3291,15 @@ function procConsolePanel(){
         <span style="color:var(--ink-soft);font-size:13px">— meds, consumables, instruments or garments; detected automatically. Scan the same item again to add more, or use the +/− buttons.</span>
         <button class="btn" style="margin-left:auto" onclick="procManualAdd()">Add without barcode</button>
       </div>
-      <div class="sub" style="margin-top:8px;color:var(--ink-soft)">Nothing is taken from stock until you end the procedure — so fix mistakes freely here.</div>
+      <div class="sub" style="margin-top:8px;color:var(--ink-soft)">Nothing is taken from stock until you end the procedure — fix mistakes freely. Your list auto-saves to the server, and you can press <strong>Save progress</strong> anytime; a refresh or crash will not lose your items.</div>
       ${missingCost?`<div class="sub" style="color:var(--amber)">⚠ Some items have no unit cost set — they'll consume stock but add £0 to the total.</div>`:''}
       <table style="margin-top:8px"><thead><tr><th>Item</th><th>Tracker</th><th>Qty</th>${showMoney?'<th class="qty">Unit £</th><th class="qty">Line £</th>':''}<th></th></tr></thead>
         <tbody>${rows||`<tr><td colspan="${showMoney?6:4}" style="color:var(--ink-soft)">Nothing added yet — scan an item to begin.</td></tr>`}</tbody></table>
       <div class="toolrow" style="margin-top:14px">
+        <button class="btn" style="padding:12px 20px" onclick="procTempSave(false)" title="Save your progress to the server without ending. Stock is NOT touched.">💾 Save progress</button>
         <button class="btn primary" style="padding:12px 24px" onclick="endProc()">■ End procedure &amp; consume stock</button>
         ${(session&&session.role==='admin')?`<button class="btn" onclick="downloadProcPDF('${p.procedureId}')">Download case sheet PDF</button>`:''}
+        <span id="procSaveState" style="color:var(--ink-soft);font-size:12.5px">${activeProc&&activeProc._savedAt?'All changes saved':'Not saved yet'}</span>
         <span style="margin-left:auto;color:var(--ink-soft);font-size:13px">${cart.length} line(s)</span>
       </div>
     </div>`;
@@ -3366,20 +3368,20 @@ function procConsumeScan(it){
       name:it.name, qty:1, unitCost:(it.cost==null?'':it.cost), _row:it._row||null});
   }
   toast('Added: '+it.name+(it.cost!=null?' (£'+Number(it.cost).toFixed(2)+' each)':''));
-  render();
+  render(); procAutosave();
 }
 
 function procLineQty(ix, delta){
   const cart = procCart();
   if(!cart[ix]) return;
   cart[ix].qty = Math.max(1, cart[ix].qty + delta);
-  render();
+  render(); procAutosave();
 }
 function procRemoveCartLine(ix){
   const cart = procCart();
   if(!cart[ix]) return;
   cart.splice(ix,1);
-  render();
+  render(); procAutosave();
 }
 function procManualAdd(){
   // open a searchable picker instead of blindly taking the first match (see #2)
@@ -3421,38 +3423,75 @@ function procPickChoose(ix){
   procPickerDlg.close();
 }
 
+// ---- temporary save (security net): persist the cart to the sheet without ending ----
+let _procSaving = false;
+async function procTempSave(silent){
+  if(!activeProc) return;
+  const cart = procCart();
+  if(!LIVE){ if(!silent) toast('Saved (demo)'); return; }
+  if(_procSaving) return;
+  _procSaving = true;
+  try{
+    await api({action:'procSaveCart', procedureId:activeProc.procedureId,
+      cart: cart.map(l=>({tracker:l.tracker, code:l.code||'', barcode:l.barcode||'',
+        name:l.name, qty:l.qty, unitCost:(l.unitCost===''?'':l.unitCost)})), by:myName||''});
+    activeProc._savedAt = new Date();
+    if(!silent) toast('Progress saved ✓ ('+cart.length+' lines) — safe to close or refresh');
+    else { const b=document.getElementById('procSaveState'); if(b) b.textContent='All changes saved'; }
+  }catch(err){ if(!silent) toast('Save failed — '+err.message); }
+  finally{ _procSaving = false; }
+}
+// autosave the cart shortly after each change, so a crash never loses more than a few seconds
+let _procAutosaveTimer = null;
+function procAutosave(){
+  if(!activeProc || !LIVE) return;
+  const b=document.getElementById('procSaveState'); if(b) b.textContent='Saving…';
+  clearTimeout(_procAutosaveTimer);
+  _procAutosaveTimer = setTimeout(()=>procTempSave(true), 1200);
+}
+
 async function endProc(){
   if(!activeProc) return;
   const cart = procCart();
   const total = cart.reduce((s,l)=>s+(l.unitCost===''?0:Number(l.unitCost)*l.qty),0);
-  if(!confirm('End this procedure?\n\n'+cart.length+' item line(s) will now be consumed from stock'+
-    (total?' (£'+total.toFixed(2)+' total)':'')+'. This is when stock is actually decremented.')) return;
+  if(!cart.length){ if(!confirm('End this procedure with no items added?')) return; }
+  else if(!confirm('End procedure and consume '+cart.length+' item line(s) from stock now?'+
+    (total?' (£'+total.toFixed(2)+' total)':'')+'\n\nThis is when stock is actually decremented.')) return;
   const id = activeProc.procedureId;
-  const p = state.procedures.find(x=>x.procedureId===id);
-  if(p){ p.status='Closed'; p.totalCost = total; }
-  const finishing = activeProc;
-  activeProc = null;
-  render(); toast('Procedure ended — consuming stock…');
-  if(LIVE){
-    try{
-      // now decrement stock for every cart line AND record each as a procedure line
-      for(const l of cart){
-        await api({action:'move', tracker:TRACKER_TAB[l.tracker], row:l._row||null,
-                   code:l.code||l.barcode||l.name, dir:'out', qty:l.qty, by:myName||'',
-                   batch:'', expiry:''});
-        await api({action:'procConsume', procedureId:id, tracker:l.tracker,
-                   code:l.code||l.barcode||'', name:l.name, qty:l.qty,
-                   unitCost:(l.unitCost===''?'':l.unitCost), by:myName||''});
-      }
-      await api({action:'procEnd', procedureId:id, by:myName||''});
-      loadAll();
-    }catch(err){ toast('Some items may not have saved — '+err.message); loadAll(); }
-  } else {
+
+  if(!LIVE){
     // demo mode: reflect stock locally
     cart.forEach(l=>{ const it = state.items.find(i=>i.tracker===l.tracker &&
       ((l.code&&i.code===l.code)||(l.barcode&&i.barcode===l.barcode)||i.name===l.name));
       if(it) it.qty = Math.max(0, it.qty - l.qty); });
-    render();
+    const p = state.procedures.find(x=>x.procedureId===id); if(p){ p.status='Closed'; p.totalCost=total; }
+    activeProc = null; render(); toast('Procedure ended (demo)');
+    return;
+  }
+
+  // LIVE: one atomic server call consumes stock + records lines + closes the procedure.
+  // The cart is NOT cleared locally until the server confirms, so nothing is lost on failure.
+  toast('Ending procedure — consuming stock…');
+  try{
+    // make sure the latest cart is persisted first (belt and braces)
+    await procTempSave(true);
+    const res = await api({action:'procConsumeBatch', procedureId:id,
+      lines: cart.map(l=>({tracker:l.tracker, code:l.code||'', barcode:l.barcode||'', name:l.name, qty:l.qty})),
+      by:myName||''});
+    if(res && res.failed && res.failed.length){
+      // some lines could not be consumed — keep the procedure open with those lines still in the cart
+      const failedNames = res.failed.map(f=>f.name+' ('+f.reason+')').join(', ');
+      alert('Ended, but these item(s) could NOT be consumed and remain to be dealt with:\n\n'+failedNames+
+        '\n\nThe other items were consumed. Please check these manually.');
+    }
+    // success (fully or partially) — clear local cart and refresh from sheet
+    if(activeProc) activeProc._cart = [];
+    activeProc = null;
+    await loadAll();
+    toast('Procedure ended — stock updated');
+  }catch(err){
+    // total failure: keep everything intact so the user loses nothing
+    toast('Could not end procedure — your items are safe. '+err.message);
   }
 }
 
@@ -3543,7 +3582,7 @@ function stkMarginPanel(){
         <input type="color" value="${stkr.ink}" style="width:56px;height:40px;border:1px solid var(--line);border-radius:8px;padding:2px"
           oninput="stkr.ink=this.value"></div>
       <button class="btn" onclick="stkr=Object.assign({},STK_DEFAULT);render()">Reset defaults</button>
-      ${can('sticker')?`<button class="btn" onclick="saveStkPreset()">💾 Save these settings</button>`:''}
+      ${(session&&session.role==='admin')?`<button class="btn" onclick="saveStkPreset()">💾 Save these settings (admin)</button>`:''}
     </div>
     <div class="sub" style="margin-top:8px">Tip: print one test sheet, measure any drift, nudge the margin by that amount, reprint. Once perfect, save.</div>
   </div>`;
@@ -3879,16 +3918,35 @@ async function loadAll(){
     state.alerts = data.alerts.map(a=>({_row:a._row, ts:a.Timestamp, type:a.Type,
       item:a.Item, detail:a.Detail, status:a.Status, tracker:a.Tracker}));
     state.settings = data.settings || state.settings || [];
+    // ---- CRITICAL: preserve the in-progress procedure + its cart across a reload ----
+    // The cart lives only in memory (activeProc._cart). If we blindly rebuilt procedures
+    // from the sheet, an accidental loadAll() during a case would wipe every scanned item.
+    // So we capture the live cart first, rebuild the list, then re-attach the cart.
+    const _liveProcId = activeProc ? activeProc.procedureId : null;
+    const _liveCart   = activeProc ? (activeProc._cart || []) : null;
     state.procedures = (data.procedures||[]).map(p=>({procedureId:p.ProcedureID||'', date:p.Date||'',
       surgeon:p.Surgeon||'', procedure:p.Procedure||'', patientRef:p.PatientRef||'', startedBy:p.StartedBy||'',
       status:p.Status||'Open', startTime:p.StartTime||'', endTime:p.EndTime||'',
-      totalCost:p.TotalCost===''||p.TotalCost==null?0:Number(p.TotalCost), notes:p.Notes||''}));
+      totalCost:p.TotalCost===''||p.TotalCost==null?0:Number(p.TotalCost), notes:p.Notes||'',
+      cartJSON:p.CartJSON||''}));
     state.procLines = (data.procLines||[]).map(l=>({procedureId:l.ProcedureID||'', ts:l.Timestamp,
       tracker:(l.Tracker||'').toLowerCase(), code:l.Code||'', name:l.Name||'',
       qty:Number(l.Qty)||0, unitCost:l.UnitCost===''||l.UnitCost==null?'':Number(l.UnitCost),
       lineCost:l.LineCost===''||l.LineCost==null?'':Number(l.LineCost), by:l.By||''}));
-    // resume an open procedure if one exists and none active locally
-    if(!activeProc){ const op = state.procedures.find(p=>p.status==='Open'); if(op) activeProc = op; }
+    if(_liveProcId){
+      // we were mid-procedure: find the same procedure in the fresh list and re-attach the live cart
+      const same = state.procedures.find(p=>p.procedureId===_liveProcId);
+      if(same && same.status==='Open'){ same._cart = _liveCart; activeProc = same; }
+      else if(same){ same._cart = _liveCart; activeProc = same; }   // keep cart even if status changed
+      else { activeProc._cart = _liveCart; }                        // not on sheet yet (local id) — keep as-is
+    } else {
+      // not mid-procedure: offer to resume an Open one, restoring any server-saved cart
+      const op = state.procedures.find(p=>p.status==='Open');
+      if(op){
+        activeProc = op;
+        if(op.cartJSON){ try{ op._cart = JSON.parse(op.cartJSON); }catch(e){ op._cart = op._cart||[]; } }
+      }
+    }
     state.gasChecks = (data.gasChecks||[]).map(g=>({date:g.Date?String(g.Date).slice(0,10):'', by:g.By||'',
       o2L:g.O2_LeftBank??'', o2R:g.O2_RightBank??'', o2P:g.O2_Pipeline??'', o2Use:g.O2_InUseBank||'',
       o2Deliv:g.O2_DeliveryBooked==='Yes',
@@ -3935,8 +3993,8 @@ if(session) myName = session.displayName || '';
 
 const PERMS = {
   admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:1, stores:1, assets:1, useedit:1, sticker:1},
-  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:0, stores:0, assets:0, useedit:0, sticker:0},
-  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0, instr:0, reports:0, obsolete:0, stores:0, assets:0, useedit:0, sticker:0}
+  staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:0, stores:0, assets:0, useedit:0, sticker:1},
+  common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0, instr:0, reports:0, obsolete:0, stores:0, assets:0, useedit:0, sticker:1}
 };
 function role(){ return LIVE ? (session ? session.role : null) : 'admin'; }
 function can(p){ const r = role(); return !!(r && PERMS[r] && PERMS[r][p]); }
