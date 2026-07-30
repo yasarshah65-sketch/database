@@ -3473,15 +3473,32 @@ function openProcPicker(){
 }
 function renderProcPicker(){
   const q = ($('#procPickSearch').value||'').toLowerCase().trim();
-  let pool = state.items.filter(i=>!i.obsolete && i.tracker!=='instruments' || (!i.obsolete && i.tracker==='instruments'));
-  pool = state.items.filter(i=>!i.obsolete);
+  const pool = state.items.filter(i=>!i.obsolete);
+  // live per-tracker counts — if a whole tracker failed to load from the sheet,
+  // this makes it visible immediately instead of silently "not finding" items
+  const cnt = {};
+  pool.forEach(i=>{ cnt[i.tracker]=(cnt[i.tracker]||0)+1; });
+  const order = ['meds','consumables','garments','instruments','linen'];
+  const missing = order.filter(t=>!cnt[t]);
+  const noname = pool.filter(i=>!String(i.name||'').trim()).length;
+  const hiddenObs = state.items.length - pool.length;
+  let diag = '<div style="padding:6px 12px;font-size:11.5px;color:var(--ink-soft);border-bottom:1px solid var(--line)">'+
+    'Searching '+pool.length+' items — '+order.map(t=>(TRACKER_LABEL[t]||t)+' '+(cnt[t]||0)).join(' · ')+
+    (hiddenObs?' <span style="color:var(--amber)">(+'+hiddenObs+' hidden: marked obsolete)</span>':'')+'</div>';
+  if(missing.length) diag += '<div style="padding:8px 12px;font-size:12px;color:var(--red);background:var(--red-bg);border-bottom:1px solid var(--line)">'+
+    '⚠ '+missing.map(t=>TRACKER_LABEL[t]||t).join(', ')+' loaded 0 items from the backend. In the Google Sheet, check the tab is named exactly '+
+    missing.map(t=>'&quot;'+(TRACKER_TAB[t]||t)+'&quot;').join(', ')+
+    ' and that row 1 is the header row (Code | Barcode | Name | …), then reload the app.</div>';
+  if(noname>3) diag += '<div style="padding:8px 12px;font-size:12px;color:var(--red);background:var(--red-bg);border-bottom:1px solid var(--line)">'+
+    '⚠ '+noname+' items have no name — a tab&#39;s header row may have been moved or overwritten. Check row 1 of each tracker tab.</div>';
   let list;
   if(!q){ list = pool.slice(0,40); }
   else {
-    // exact code match first
+    // exact code/barcode match first, then partial on name, code AND barcode
     const exact = pool.filter(i=>(i.code||'').toLowerCase()===q || (i.barcode||'').toLowerCase()===q);
     const partial = pool.filter(i=>!exact.includes(i) &&
-      (i.name.toLowerCase().includes(q) || (i.code||'').toLowerCase().includes(q)));
+      ((i.name||'').toLowerCase().includes(q) || (i.code||'').toLowerCase().includes(q) ||
+       (i.barcode||'').toLowerCase().includes(q)));
     list = [...exact, ...partial].slice(0,40);
   }
   const rows = list.map(it=>{
@@ -3491,8 +3508,8 @@ function renderProcPicker(){
       <span><strong>${it.name}</strong> <span style="font-family:var(--mono);font-size:11px;color:var(--ink-soft)">${it.code||it.barcode||''}</span></span>
       <span style="font-size:12px;color:var(--ink-soft);white-space:nowrap">${TRACKER_LABEL[it.tracker]}${it.loc?' · '+it.loc:''}</span></div>`;
   }).join('');
-  $('#procPickList').innerHTML = rows ||
-    '<div style="padding:14px;color:var(--ink-soft)">No item matches — try fewer letters.</div>';
+  $('#procPickList').innerHTML = diag + (rows ||
+    '<div style="padding:14px;color:var(--ink-soft)">No item matches — try fewer letters.</div>');
 }
 function procPickChoose(ix){
   const it = state.items[ix];
