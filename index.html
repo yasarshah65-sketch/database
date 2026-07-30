@@ -3472,6 +3472,7 @@ function openProcPicker(){
   setTimeout(()=>$('#procPickSearch').focus(),50);
 }
 function renderProcPicker(){
+ try{
   const q = ($('#procPickSearch').value||'').toLowerCase().trim();
   const pool = state.items.filter(i=>!i.obsolete);
   // live per-tracker counts — if a whole tracker failed to load from the sheet,
@@ -3510,6 +3511,13 @@ function renderProcPicker(){
   }).join('');
   $('#procPickList').innerHTML = diag + (rows ||
     '<div style="padding:14px;color:var(--ink-soft)">No item matches — try fewer letters.</div>');
+ }catch(err){
+  // never freeze silently on a stale list — show the real error so it can be reported
+  console.error('renderProcPicker', err);
+  $('#procPickList').innerHTML = '<div style="padding:12px;color:var(--red);background:var(--red-bg);font-size:13px">'+
+    '⚠ Search failed: '+String(err && err.message ? err.message : err).replace(/</g,'&lt;')+
+    '<br>Please report this exact message.</div>';
+ }
 }
 function procPickChoose(ix){
   const it = state.items[ix];
@@ -4039,17 +4047,21 @@ async function api(payload){
 }
 
 function mapItem(tab, r){
+  // Every text field is String-coerced: Google Sheets returns a NUMBER for cells that
+  // contain only digits (e.g. an item named "70141"), and a numeric name crashes every
+  // .toLowerCase() search in the app, silently freezing pickers and lists.
+  const S = v => v!=null ? String(v) : '';
   return {tracker: tab.toLowerCase(), _row: r._row,
-    code: r.Code!=null?String(r.Code):'', barcode: r.Barcode!=null?String(r.Barcode):'',
-    name: r.Name||'', cat: r.Category||'', supplier: r.Supplier||'',
-    loc: r.Location|| (tab==='Instruments' ? 'Bollin' : ''), unit: r.Unit||'Each',
+    code: S(r.Code), barcode: S(r.Barcode),
+    name: S(r.Name), cat: S(r.Category), supplier: S(r.Supplier),
+    loc: S(r.Location) || (tab==='Instruments' ? 'Bollin' : ''), unit: S(r.Unit)||'Each',
     qty: Number(r.Qty)||0, reorder: Number(r.ReorderLevel)||0,
     cost: r.UnitCost!=null && r.UnitCost!=='' ? Number(r.UnitCost) : null,
     expiry: r.Expiry ? String(r.Expiry).slice(0,10) : null,
-    batch: r.Batch||'', status: r.Status||'',
+    batch: S(r.Batch), status: S(r.Status),
     obsolete: String(r.Obsolete||'').toLowerCase()==='yes',
-    obsBy: r.ObsoleteBy||'', obsAt: r.ObsoleteAt||'',
-    remarks: r.Notes||'',
+    obsBy: S(r.ObsoleteBy), obsAt: r.ObsoleteAt||'',
+    remarks: S(r.Notes),
     qtyTray: r.QtyInTray!=null && r.QtyInTray!=='' ? Number(r.QtyInTray) : null,
     cycles: Number(r.CyclesToDate)||0};
 }
