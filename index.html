@@ -523,6 +523,24 @@
   </div>
 </dialog>
 
+<dialog id="ohDlg">
+  <div class="m-head" id="ohTitle">Instrument details</div>
+  <div class="m-body">
+    <div class="m-row"><label for="ohName">Name</label><input id="ohName" type="text"></div>
+    <div class="m-row"><label for="ohCode">Code</label><input id="ohCode" type="text"></div>
+    <div class="m-row"><label for="ohBar">Barcode</label><input id="ohBar" type="text"></div>
+    <div class="m-row"><label for="ohType">Type</label><input id="ohType" type="text"></div>
+    <div class="m-row"><label for="ohQty">Qty in tray</label><input id="ohQty" type="number" min="1"></div>
+    <div class="m-row"><label for="ohExp">Sterile until</label><input id="ohExp" type="date"></div>
+    <div id="ohInfo" style="font-size:13px;color:var(--ink-soft);padding:4px 2px 0"></div>
+    <p id="ohHint" style="font-size:12.5px;color:var(--ink-soft);margin-top:10px"></p>
+  </div>
+  <div class="m-actions">
+    <button class="btn" onclick="ohDlg.close()">Close</button>
+    <button class="btn primary" id="ohSaveBtn" onclick="saveOnHandEdit()">Save changes</button>
+  </div>
+</dialog>
+
 <dialog id="addDlg">
   <div class="m-head" id="addDlgTitle">Add new item</div>
   <div class="m-body">
@@ -1599,17 +1617,19 @@ function sterilOnHandTab(){
       : new Date(it.expiry).toLocaleDateString('en-GB');
     const where = instIsOut(it.code||it.barcode)
       ? '<span class="badge b-exp">At CSSD</span>' : '<span class="badge b-ok">At Bollin</span>';
-    return `<tr style="${d!=null&&d<=60?'background:#FFF7F0':''}">
+    const gi = state.items.indexOf(it);
+    return `<tr style="${d!=null&&d<=60?'background:#FFF7F0':''};cursor:pointer" onclick="openOnHand(${gi})"
+        title="Click for details${(session&&session.role==='admin')?' / edit':''}">
       <td data-label=""><strong>${it.name}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${it.code||it.barcode||''}</span></td>
       <td data-label="Type">${it.cat||'—'}</td>
-      <td class="qty" data-label="In tray">${it.qty||1}</td>
+      <td class="qty" data-label="In tray">${it.qtyTray!=null?it.qtyTray:(it.qty||1)}</td>
       <td data-label="Sterile until">${expBadge}</td>
       <td data-label="Where">${where}</td>
     </tr>`;
   }).join('');
   return `${banner}
     <div class="toolrow">
-      ${can('instr')?`<button class="btn primary" onclick="openInstrument('')">＋ Add instrument</button>`:''}
+      ${can('instr')?`<button class="btn primary" onclick="openInstrument('')" title="Register an already-sterile item straight onto the shelf — enter its expiry yourself. Items that go through Log used → Dispatch → Receive get their expiry set automatically.">＋ Add already-sterile item</button>`:''}
       <input type="search" placeholder="Search instrument or code…" value="${window._iq||''}"
              oninput="window._iq=this.value;refreshOnHand()">
       <span style="color:var(--ink-soft);font-size:13px;margin-left:auto">${all.length} on register</span>
@@ -1631,6 +1651,53 @@ function refreshOnHand(){
 
 /* --- instrument register add (manual or from unknown scan) --- */
 let instAfterSave = null;   // e.g. log-as-used after registering a scanned code
+let ohEditIx = -1;
+function openOnHand(i){
+  const it = state.items[i];
+  if(!it || it.tracker!=='instruments') return;
+  ohEditIx = i;
+  const isAdmin = session && session.role==='admin';
+  $('#ohTitle').textContent = it.name;
+  $('#ohName').value = it.name||'';
+  $('#ohCode').value = it.code||'';
+  $('#ohBar').value  = it.barcode||'';
+  $('#ohType').value = it.cat||'';
+  $('#ohQty').value  = it.qtyTray!=null?it.qtyTray:(it.qty||1);
+  $('#ohExp').value  = it.expiry||'';
+  ['ohName','ohCode','ohBar','ohType','ohQty','ohExp'].forEach(id=>$('#'+id).disabled = !isAdmin);
+  const d = instDaysLeft(it);
+  const where = instIsOut(it.code||it.barcode) ? 'At Countess (out for sterilisation)' : 'At Bollin';
+  $('#ohInfo').innerHTML = 'Where: <strong>'+where+'</strong>'+
+    ' &nbsp;·&nbsp; Sterilisation cycles to date: <strong>'+(it.cycles||0)+'</strong>'+
+    (d!=null ? ' &nbsp;·&nbsp; '+(d<0?('<span style="color:var(--red)">Expired '+(-d)+' day(s) ago</span>'):(d+' day(s) of sterility left')) : '');
+  $('#ohHint').textContent = isAdmin
+    ? 'Correct anything logged wrongly — name, code, tray count or expiry — then Save. Changes write to the Instruments register.'
+    : 'View only. Ask an admin to correct anything logged wrongly.';
+  $('#ohSaveBtn').style.display = isAdmin ? '' : 'none';
+  ohDlg.showModal();
+}
+async function saveOnHandEdit(){
+  const it = state.items[ohEditIx];
+  if(!it || !(session&&session.role==='admin')) return;
+  const name = $('#ohName').value.trim();
+  if(!name){ toast('Name is required'); return; }
+  if(LIVE && !it._row){ toast('Still syncing this item — try again in a moment'); loadAll(); return; }
+  const origCode=it.code, origBar=it.barcode, origName=it.name;
+  it.name=name; it.code=$('#ohCode').value.trim(); it.barcode=$('#ohBar').value.trim();
+  it.cat=$('#ohType').value.trim(); it.qtyTray=Math.max(1,parseInt($('#ohQty').value||'1',10));
+  it.expiry=$('#ohExp').value||null;
+  ohDlg.close(); render(); toast('Updated: '+name);
+  if(LIVE){
+    try{
+      await api({action:'updateItem', tracker:'Instruments', row:it._row,
+        fields:{Name:it.name, Code:it.code, Barcode:it.barcode, Category:it.cat,
+                QtyInTray:it.qtyTray, Expiry:it.expiry},
+        _origCode:origCode, _origBar:origBar, _origName:origName});
+      await loadAll();
+    }catch(err){ toast('Not saved — '+err.message); loadAll(); }
+  }
+}
+
 function openInstrument(code, afterSave){
   instAfterSave = afterSave || null;
   $('#inCode').value = code||'';
@@ -3261,9 +3328,13 @@ function procConsolePanel(){
   const showMoney = (session && session.role==='admin');   // financials ADMIN ONLY (#3)
   const total = cart.reduce((s,l)=>s+(l.unitCost===''?0:Number(l.unitCost)*l.qty),0);
   const missingCost = showMoney && cart.some(l=>l.unitCost===''||l.unitCost==null);
+  const stockOf = l => { const it = state.items.find(i=>i.tracker===l.tracker &&
+      ((l.code&&(i.code===l.code||i.barcode===l.code))||(l.barcode&&(i.barcode===l.barcode||i.code===l.barcode))||i.name===l.name));
+    return it ? (it.qty+' '+(it.unit||'')) : '—'; };
   const rows = cart.map((l,i)=>`<tr>
     <td data-label=""><strong>${l.name}</strong> <span class="code" style="font-family:var(--mono);font-size:11px">${l.code||l.barcode||''}</span></td>
     <td data-label="Tracker">${TRACKER_LABEL[l.tracker]||l.tracker}</td>
+    <td class="qty" data-label="In stock">${stockOf(l)}</td>
     <td data-label="Qty" style="white-space:nowrap">
       <div class="stepper" style="display:inline-flex;transform:scale(.85);transform-origin:left center">
         <button type="button" onclick="procLineQty(${i},-1)">−</button>
@@ -3274,14 +3345,17 @@ function procConsolePanel(){
     <td class="qty" data-label="Line £">${l.unitCost===''||l.unitCost==null?'—':'£'+(Number(l.unitCost)*l.qty).toFixed(2)}</td>`:''}
     <td class="rowbtns" data-label=""><button onclick="procRemoveCartLine(${i})" style="color:var(--red)">✕</button></td></tr>`).join('');
   return `
-    <div class="gaspanel" style="border:2px solid var(--pine)">
+    <div class="gaspanel" style="border:2px solid var(--pine);position:relative">
+      <button onclick="cancelProc()" title="Cancel this procedure (started by mistake). Nothing has been taken from stock."
+        style="position:absolute;top:10px;right:12px;width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--red);font-size:16px;font-weight:700;cursor:pointer;line-height:1">✕</button>
       <h2><span class="led green"></span>Procedure in progress — scan to add items</h2>
       <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-bottom:8px">
         <div><div style="font-size:12px;color:var(--ink-soft)">Surgeon</div><strong>${p.surgeon||'—'}</strong></div>
         <div><div style="font-size:12px;color:var(--ink-soft)">Procedure</div><strong>${p.procedure||'—'}</strong></div>
         <div><div style="font-size:12px;color:var(--ink-soft)">Date</div><strong>${p.date?new Date(p.date).toLocaleDateString('en-GB'):'—'}</strong></div>
         ${p.patientRef?`<div><div style="font-size:12px;color:var(--ink-soft)">Patient</div><strong>${p.patientRef}</strong></div>`:''}
-        ${showMoney?`<div style="margin-left:auto;text-align:right">
+        ${(session&&session.role==='admin')?`<button class="btn" style="padding:6px 12px;font-size:12.5px;align-self:center" onclick="procEditMeta()" title="Correct surgeon / procedure / date / patient ref">✎ Edit details</button>`:''}
+        ${showMoney?`<div style="margin-left:auto;text-align:right;padding-top:26px">
           <div style="font-size:12px;color:var(--ink-soft)">Running total</div>
           <strong style="font-size:22px;color:var(--pine)">£${total.toFixed(2)}</strong></div>`:''}
       </div>
@@ -3293,8 +3367,8 @@ function procConsolePanel(){
       </div>
       <div class="sub" style="margin-top:8px;color:var(--ink-soft)">Nothing is taken from stock until you end the procedure — fix mistakes freely. Your list auto-saves to the server, and you can press <strong>Save progress</strong> anytime; a refresh or crash will not lose your items.</div>
       ${missingCost?`<div class="sub" style="color:var(--amber)">⚠ Some items have no unit cost set — they'll consume stock but add £0 to the total.</div>`:''}
-      <table style="margin-top:8px"><thead><tr><th>Item</th><th>Tracker</th><th>Qty</th>${showMoney?'<th class="qty">Unit £</th><th class="qty">Line £</th>':''}<th></th></tr></thead>
-        <tbody>${rows||`<tr><td colspan="${showMoney?6:4}" style="color:var(--ink-soft)">Nothing added yet — scan an item to begin.</td></tr>`}</tbody></table>
+      <table style="margin-top:8px"><thead><tr><th>Item</th><th>Tracker</th><th class="qty">In stock</th><th>Qty</th>${showMoney?'<th class="qty">Unit £</th><th class="qty">Line £</th>':''}<th></th></tr></thead>
+        <tbody>${rows||`<tr><td colspan="${showMoney?7:5}" style="color:var(--ink-soft)">Nothing added yet — scan an item to begin.</td></tr>`}</tbody></table>
       <div class="toolrow" style="margin-top:14px">
         <button class="btn" style="padding:12px 20px" onclick="procTempSave(false)" title="Save your progress to the server without ending. Stock is NOT touched.">💾 Save progress</button>
         <button class="btn primary" style="padding:12px 24px" onclick="endProc()">■ End procedure &amp; consume stock</button>
@@ -3325,7 +3399,11 @@ function procHistoryPanel(){
     <td data-label="Patient">${p.patientRef||'—'}</td>
     <td data-label="Status">${p.status}</td>
     ${showMoney?`<td class="qty" data-label="Total £">£${(Number(p.totalCost)||0).toFixed(2)}</td>`:''}
-    ${(session&&session.role==='admin')?`<td class="rowbtns" data-label=""><button onclick="downloadProcPDF('${p.procedureId}')">PDF</button></td>`:'<td></td>'}</tr>`).join('');
+    ${(session&&session.role==='admin')?`<td class="rowbtns" data-label="">
+        <button onclick="downloadProcPDF('${p.procedureId}')">PDF</button>
+        <button onclick="procEditClosed('${p.procedureId}')" title="Reopen this procedure for editing — its consumed stock is returned until you end it again">Edit</button>
+        <button onclick="procDeleteClosed('${p.procedureId}')" style="color:var(--red)" title="Delete this procedure and return all consumed stock to the inventories">Delete</button>
+      </td>`:'<td></td>'}</tr>`).join('');
   const cols = 4 + (showMoney?1:0) + 1;
   return `${summary}
     <h1 style="font-size:16px;margin-top:22px">Recent procedures</h1>
@@ -3487,12 +3565,94 @@ async function endProc(){
     // success (fully or partially) — clear local cart and refresh from sheet
     if(activeProc) activeProc._cart = [];
     activeProc = null;
+    window._justEndedProc = id;          // stop a stale reload resurrecting it
     await loadAll();
+    if(activeProc && activeProc.procedureId===window._justEndedProc) activeProc = null;
+    window._justEndedProc = null;
     toast('Procedure ended — stock updated');
   }catch(err){
     // total failure: keep everything intact so the user loses nothing
     toast('Could not end procedure — your items are safe. '+err.message);
   }
+}
+
+// ---- #2: cancel an open procedure started by mistake (nothing consumed yet) ----
+async function cancelProc(){
+  if(!activeProc) return;
+  const cart = procCart();
+  if(!confirm('Cancel this procedure?\n\n'+
+    (cart.length? cart.length+' item line(s) in the list will be DISCARDED. ':'')+
+    'Nothing has been taken from stock, so no inventory changes are needed.\n\nThis cannot be undone.')) return;
+  const id = activeProc.procedureId;
+  const ix = state.procedures.findIndex(x=>x.procedureId===id);
+  if(ix>=0) state.procedures.splice(ix,1);
+  activeProc = null;
+  render(); toast('Procedure cancelled — nothing was consumed');
+  if(LIVE && !String(id).startsWith('PROC-LOCAL')){
+    try{ await api({action:'procCancel', procedureId:id, by:myName||''}); loadAll(); }
+    catch(err){ toast('Cancel not saved — '+err.message); loadAll(); }
+  }
+}
+
+// ---- #1: admin corrects surgeon / procedure / date / patient ref ----
+async function procEditMeta(){
+  if(!activeProc || !(session&&session.role==='admin')) return;
+  const surgeon = prompt('Surgeon:', activeProc.surgeon||''); if(surgeon===null) return;
+  const procedure = prompt('Procedure:', activeProc.procedure||''); if(procedure===null) return;
+  const date = prompt('Date (YYYY-MM-DD):', activeProc.date? String(activeProc.date).slice(0,10):todayISO()); if(date===null) return;
+  const patientRef = prompt('Patient ref (optional):', activeProc.patientRef||''); if(patientRef===null) return;
+  activeProc.surgeon=surgeon.trim(); activeProc.procedure=procedure.trim();
+  activeProc.date=date.trim(); activeProc.patientRef=patientRef.trim();
+  render(); toast('Details updated');
+  if(LIVE && !String(activeProc.procedureId).startsWith('PROC-LOCAL')){
+    try{ await api({action:'procUpdateMeta', procedureId:activeProc.procedureId,
+      surgeon:activeProc.surgeon, procedure:activeProc.procedure,
+      date:activeProc.date, patientRef:activeProc.patientRef, by:myName||''}); }
+    catch(err){ toast('Not saved — '+err.message); }
+  }
+}
+
+// ---- #1: admin reopens a closed procedure; consumed stock is returned until re-ended ----
+async function procEditClosed(procId){
+  if(!(session&&session.role==='admin')) return;
+  if(activeProc){ toast('Finish or cancel the current procedure first'); return; }
+  if(!confirm('Reopen this procedure for editing?\n\nEverything it consumed will be RETURNED to stock now, and consumed again (with your corrections) when you end it. The case sheet will reflect the corrected list.')) return;
+  if(!LIVE){ toast('Not available in demo mode'); return; }
+  toast('Reopening — returning its stock…');
+  try{
+    const res = await api({action:'procReopen', procedureId:procId, by:myName||''});
+    if(res.failed && res.failed.length)
+      alert('Reopened, but these could not be returned to stock (check manually):\n\n'+
+        res.failed.map(f=>f.name+' ('+f.reason+')').join('\n'));
+    await loadAll();
+    const p = state.procedures.find(x=>x.procedureId===procId);
+    if(p){
+      p.status='Open';
+      p._cart = (res.cart||[]).length ? res.cart :
+        (p.cartJSON ? (function(){try{return JSON.parse(p.cartJSON);}catch(e){return [];}})() : []);
+      activeProc = p;
+    }
+    render(); toast('Procedure reopened — adjust the list, then end it again');
+  }catch(err){ toast('Could not reopen — '+err.message); loadAll(); }
+}
+
+// ---- #1: admin deletes a procedure; consumed stock returns to the inventories ----
+async function procDeleteClosed(procId){
+  if(!(session&&session.role==='admin')) return;
+  const p = state.procedures.find(x=>x.procedureId===procId);
+  const label = p ? (p.surgeon||'—')+' — '+(p.procedure||'') : procId;
+  if(!confirm('Delete procedure "'+label+'"?\n\nAll stock it consumed will be RETURNED to the inventories, its cost lines will be removed, and it will disappear from history and surgeon totals.')) return;
+  if(!confirm('Are you absolutely sure? This cannot be undone.')) return;
+  if(!LIVE){ toast('Not available in demo mode'); return; }
+  toast('Deleting — returning stock…');
+  try{
+    const res = await api({action:'procDelete', procedureId:procId, by:myName||''});
+    if(res.failed && res.failed.length)
+      alert('Deleted, but these could not be returned to stock (check manually):\n\n'+
+        res.failed.map(f=>f.name+' ('+f.reason+')').join('\n'));
+    await loadAll();
+    toast('Procedure deleted — '+(res.restored||0)+' line(s) returned to stock');
+  }catch(err){ toast('Could not delete — '+err.message); loadAll(); }
 }
 
 async function downloadProcPDF(procId){
@@ -3872,7 +4032,9 @@ function mapItem(tab, r){
     batch: r.Batch||'', status: r.Status||'',
     obsolete: String(r.Obsolete||'').toLowerCase()==='yes',
     obsBy: r.ObsoleteBy||'', obsAt: r.ObsoleteAt||'',
-    remarks: r.Notes||''};
+    remarks: r.Notes||'',
+    qtyTray: r.QtyInTray!=null && r.QtyInTray!=='' ? Number(r.QtyInTray) : null,
+    cycles: Number(r.CyclesToDate)||0};
 }
 
 async function loadAll(){

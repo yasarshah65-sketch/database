@@ -37,7 +37,8 @@ const ACTION_ROLE = {
   useEdit:'admin', useDelete:'admin',
   setSetting:'admin',
   procStart:'common', procConsume:'common', procEnd:'common', procConsumeBatch:'common',
-  procSaveCart:'common', procGetCart:'common'
+  procSaveCart:'common', procGetCart:'common', procCancel:'common',
+  procReopen:'admin', procDelete:'admin', procUpdateMeta:'admin'
 };
 const ROLE_RANK = { common: 0, staff: 1, admin: 2 };
 
@@ -90,6 +91,10 @@ function doPost(e) {
       case 'procConsume': return json_(procConsume_(req));
       case 'procEnd':     return json_(procEnd_(req));
       case 'procConsumeBatch': return json_(procConsumeBatch_(req));
+      case 'procReopen':  return json_(procReopen_(req));
+      case 'procDelete':  return json_(procDelete_(req));
+      case 'procCancel':  return json_(procCancel_(req));
+      case 'procUpdateMeta': return json_(procUpdateMeta_(req));
       case 'procSaveCart': return json_(procSaveCart_(req));
       case 'procGetCart':  return json_(procGetCart_(req));
       case 'ack':       return json_(ackAlert_(req));
@@ -1074,13 +1079,6 @@ const PROCLINE_HEADERS = ['ProcedureID','Timestamp','Tracker','Code','Name','Qty
 
 function procForRole_(session) {
   const rows = readTab_('Procedures');
-  if (session && session.role === 'admin') return rows;
-  // non-admin: hide the financial total
-  return rows.map(function (r) { var o = {}; for (var k in r) if (k !== 'TotalCost') o[k] = r[k]; return o; });
-}
-
-function procForRole_(session) {
-  const rows = readTab_('Procedures');
   if (!session) return [];
   if (session.role === 'admin') return rows;
   return rows.map(function (r) {
@@ -1283,6 +1281,139 @@ function procConsumeBatch_(q) {
     note: results.length + ' line(s) consumed · Total £' + runningTotal.toFixed(2) +
       (failed.length ? ' · ' + failed.length + ' FAILED' : '') });
   return { ok: failed.length === 0, consumed: results.length, failed: failed, total: runningTotal };
+}
+
+// ---- shared: find a Procedures row by id -> {sh, head, rowIdx (0-based in vals), vals} or null ----
+function procRow_(procedureId) {
+  const sh = ss_().getSheetByName('Procedures');
+  if (!sh) return null;
+  const vals = sh.getDataRange().getValues();
+  const head = vals[0].map(String);
+  const idC = head.indexOf('ProcedureID');
+  for (let r = 1; r < vals.length; r++)
+    if (String(vals[r][idC]) === String(procedureId)) return { sh: sh, head: head, r: r, vals: vals[r] };
+  return null;
+}
+
+// ---- shared: restore stock for every ProcedureLines row of a procedure, then delete those rows ----
+// Resolution mirrors procConsumeBatch_: Code -> Barcode -> exact Name (blank-code meds safe).
+function procRestoreLines_(procedureId, by) {
+  const ls = ss_().getSheetByName('ProcedureLines');
+  if (!ls) return { restored: [], failed: [], cart: [] };
+  const lv = ls.getDataRange().getValues();
+  const lh = lv[0].map(String);
+  const cId = lh.indexOf('ProcedureID'), cTr = lh.indexOf('Tracker'), cCo = lh.indexOf('Code'),
+        cNa = lh.indexOf('Name'), cQt = lh.indexOf('Qty'), cUc = lh.indexOf('UnitCost');
+  const mine = [];
+  for (let r = 1; r < lv.length; r++)
+    if (String(lv[r][cId]) === String(procedureId))
+      mine.push({ rowNum: r + 1, tracker: String(lv[r][cTr] || ''), code: String(lv[r][cCo] || ''),
+        name: String(lv[r][cNa] || ''), qty: Math.max(1, Number(lv[r][cQt]) || 1),
+        unitCost: lv[r][cUc] === '' || lv[r][cUc] == null ? '' : Number(lv[r][cUc]) });
+  const restored = [], failed = [];
+  mine.forEach(function (l) {
+    try {
+      const tabName = l.tracker.charAt(0).toUpperCase() + l.tracker.slice(1);
+      const sh = ss_().getSheetByName(tabName);
+      if (!sh) throw 'no tab ' + tabName;
+      const vals = sh.getDataRange().getValues();
+      const head = vals[0].map(String);
+      const cCode = head.indexOf('Code'), cBar = head.indexOf('Barcode'),
+            cName = head.indexOf('Name'), cQty = head.indexOf('Qty');
+      const wc = l.code.trim(), wn = l.name.trim().toLowerCase();
+      let rowIdx = -1, byName = -1;
+      for (let r = 1; r < vals.length; r++) {
+        const vc = cCode >= 0 ? String(vals[r][cCode] || '').trim() : '';
+        const vb = cBar >= 0 ? String(vals[r][cBar] || '').trim() : '';
+        const vn = cName >= 0 ? String(vals[r][cName] || '').trim().toLowerCase() : '';
+        if (wc && ((vc && vc === wc) || (vb && vb === wc))) { rowIdx = r; break; }
+        if (byName < 0 && wn && vn === wn) byName = r;
+      }
+      if (rowIdx < 0) rowIdx = byName;
+      if (rowIdx < 0) { failed.push({ name: l.name, reason: 'not found in ' + tabName }); return; }
+      const cur = Number(vals[rowIdx][cQty]) || 0;
+      sh.getRange(rowIdx + 1, cQty + 1).setValue(cur + l.qty);
+      logAct_('Stock in', { dir: 'in', tracker: tabName, code: l.code, name: l.name, qty: l.qty,
+        by: by, note: 'Returned to stock — procedure ' + procedureId + ' reopened/deleted' });
+      restored.push(l);
+    } catch (e) { failed.push({ name: l.name, reason: String(e) }); }
+  });
+  // delete the lines bottom-up so row numbers stay valid
+  mine.slice().reverse().forEach(function (l) { ls.deleteRow(l.rowNum); });
+  const cart = mine.map(function (l) { return { tracker: l.tracker, code: l.code, barcode: '',
+    name: l.name, qty: l.qty, unitCost: l.unitCost }; });
+  return { restored: restored, failed: failed, cart: cart };
+}
+
+// ---- admin: reopen a closed procedure for editing (stock is put BACK; re-End re-consumes) ----
+function procReopen_(q) {
+  const p = procRow_(q.procedureId);
+  if (!p) return { ok: false, error: 'Procedure not found' };
+  const stC = p.head.indexOf('Status');
+  if (String(p.vals[stC]) === 'Open') return { ok: false, error: 'Procedure is already open' };
+  const res = procRestoreLines_(q.procedureId, q.by);
+  const etC = p.head.indexOf('EndTime'), tcC = p.head.indexOf('TotalCost'), cjC = p.head.indexOf('CartJSON');
+  p.sh.getRange(p.r + 1, stC + 1).setValue('Open');
+  if (etC >= 0) p.sh.getRange(p.r + 1, etC + 1).setValue('');
+  if (tcC >= 0) p.sh.getRange(p.r + 1, tcC + 1).setValue(0);
+  if (cjC >= 0) p.sh.getRange(p.r + 1, cjC + 1).setValue(JSON.stringify(res.cart));
+  logAct_('Procedure reopened', { tracker: 'Procedure', code: q.procedureId, name: 'Reopened for editing',
+    by: q.by, note: res.restored.length + ' line(s) returned to stock' +
+      (res.failed.length ? ' · ' + res.failed.length + ' could not be restored' : '') });
+  return { ok: true, cart: res.cart, failed: res.failed };
+}
+
+// ---- admin: delete a procedure entirely; consumed stock goes back to inventories ----
+function procDelete_(q) {
+  const p = procRow_(q.procedureId);
+  if (!p) return { ok: false, error: 'Procedure not found' };
+  const stC = p.head.indexOf('Status');
+  const wasClosed = String(p.vals[stC]) !== 'Open';
+  const res = wasClosed ? procRestoreLines_(q.procedureId, q.by)
+                        : { restored: [], failed: [], cart: [] };
+  if (!wasClosed) {
+    // open procedures have no consumed lines, but clear any stray ones defensively
+    procRestoreLines_(q.procedureId, q.by);
+  }
+  p.sh.deleteRow(p.r + 1);
+  logAct_('Procedure deleted', { tracker: 'Procedure', code: q.procedureId,
+    name: String(p.vals[p.head.indexOf('Surgeon')] || '') + ' — ' + String(p.vals[p.head.indexOf('Procedure')] || ''),
+    by: q.by, note: (wasClosed ? res.restored.length + ' line(s) returned to stock' : 'No stock had been consumed') +
+      (res.failed.length ? ' · ' + res.failed.length + ' could not be restored' : '') });
+  return { ok: true, restored: res.restored.length, failed: res.failed };
+}
+
+// ---- any role: cancel an OPEN procedure started by mistake (nothing was consumed) ----
+function procCancel_(q) {
+  const p = procRow_(q.procedureId);
+  if (!p) return { ok: true, note: 'not on sheet' };   // local-only id: nothing to do
+  const stC = p.head.indexOf('Status');
+  if (String(p.vals[stC]) !== 'Open')
+    return { ok: false, error: 'Only an open procedure can be cancelled' };
+  p.sh.deleteRow(p.r + 1);
+  logAct_('Procedure cancelled', { tracker: 'Procedure', code: q.procedureId,
+    name: String(p.vals[p.head.indexOf('Surgeon')] || '') + ' — ' + String(p.vals[p.head.indexOf('Procedure')] || ''),
+    by: q.by, note: 'Started by mistake — no stock was consumed' });
+  return { ok: true };
+}
+
+// ---- admin: correct surgeon / procedure / patient ref / date ----
+function procUpdateMeta_(q) {
+  const p = procRow_(q.procedureId);
+  if (!p) return { ok: false, error: 'Procedure not found' };
+  const set = function (col, val) { const c = p.head.indexOf(col);
+    if (c >= 0 && val !== undefined) p.sh.getRange(p.r + 1, c + 1).setValue(val); };
+  const changes = [];
+  ['Surgeon', 'Procedure', 'PatientRef'].forEach(function (k) {
+    const key = k.charAt(0).toLowerCase() + k.slice(1);
+    if (q[key] !== undefined && String(q[key]) !== String(p.vals[p.head.indexOf(k)] || '')) {
+      set(k, q[key]); changes.push(k.toLowerCase() + ' → "' + q[key] + '"');
+    }
+  });
+  if (q.date !== undefined && q.date) { set('Date', new Date(q.date)); changes.push('date → ' + q.date); }
+  logAct_('Procedure details edited', { tracker: 'Procedure', code: q.procedureId,
+    name: q.surgeon || '', by: q.by, note: changes.join('; ') || 'No changes' });
+  return { ok: true };
 }
 
 function procEnd_(q) {
