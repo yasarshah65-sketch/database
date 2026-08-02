@@ -35,7 +35,7 @@ const ACTION_ROLE = {
   moveStore:'admin', storeAdd:'admin', storeRemove:'admin', clearBarcode:'admin',
   assetAdd:'admin', assetUpdate:'admin',
   useEdit:'admin', useDelete:'admin',
-  setSetting:'admin',
+  setSetting:'admin', medPresetsSave:'common',
   procStart:'common', procConsume:'common', procEnd:'common', procConsumeBatch:'common',
   procSaveCart:'common', procGetCart:'common', procCancel:'common',
   procReopen:'admin', procDelete:'admin', procUpdateMeta:'admin'
@@ -87,6 +87,7 @@ function doPost(e) {
       case 'useEdit':     return json_(useEdit_(req));
       case 'useDelete':   return json_(useDelete_(req));
       case 'setSetting':  return json_(setSetting_(req));
+      case 'medPresetsSave': return json_(medPresetsSave_(req));
       case 'procStart':   return json_(procStart_(req));
       case 'procConsume': return json_(procConsume_(req));
       case 'procEnd':     return json_(procEnd_(req));
@@ -270,6 +271,17 @@ function setSetting_(q) {
   const at = vals.indexOf(String(q.key));
   if (at >= 0) sh.getRange(at + 1, 2).setValue(q.value);
   else sh.appendRow([q.key, q.value, 'Saved from the app']);
+  return { ok: true };
+}
+
+function medPresetsSave_(q) {
+  // saved medication-label presets (shared, any role — clinical convenience list)
+  const sh = ss_().getSheetByName('Settings');
+  if (!sh) return { ok: false, error: 'Settings tab missing' };
+  const vals = sh.getRange(1, 1, Math.max(sh.getLastRow(), 1), 1).getValues().map(r => String(r[0]));
+  const at = vals.indexOf('med_sticker_presets');
+  if (at >= 0) sh.getRange(at + 1, 2).setValue(q.json || '[]');
+  else sh.appendRow(['med_sticker_presets', q.json || '[]', 'Saved from the app']);
   return { ok: true };
 }
 

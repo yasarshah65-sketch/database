@@ -822,8 +822,10 @@ document.getElementById('scanInput').addEventListener('keydown', e => {
 });
 function handleScan(code){
   $('#scanEcho').textContent = 'Scanned: ' + code;
-  // a procedure is running: consume the scanned item against it (and from stock)
-  if(procActive()){
+  // a procedure is running AND you are on the Procedure costing screen: add the scan to the case.
+  // On every other screen (Sterilisation, trackers, implants…) scanning behaves exactly as normal,
+  // so an open procedure never swallows tray or stock scans done elsewhere.
+  if(procActive() && currentView==='procedures'){
     let pIdx = state.items.findIndex(it => it.barcode===code || it.code===code);
     if(pIdx<0 && code in state.barcodeLinks) pIdx = state.barcodeLinks[code];
     if(pIdx>=0){ procConsumeScan(state.items[pIdx]); return; }
@@ -3362,7 +3364,7 @@ function procConsolePanel(){
       <div class="toolrow" style="background:var(--ok-bg);border-radius:10px;padding:12px">
         <span class="pulse" aria-hidden="true"></span>
         <strong style="color:var(--pine)">Scan any item</strong>
-        <span style="color:var(--ink-soft);font-size:13px">— meds, consumables, instruments or garments; detected automatically. Scan the same item again to add more, or use the +/− buttons.</span>
+        <span style="color:var(--ink-soft);font-size:13px">— meds, consumables, instruments or garments; detected automatically. Scan the same item again to add more, or use the +/− buttons. Scans are captured for this case <strong>only while you're on this screen</strong> — scanning in Sterilisation or the trackers works normally there.</span>
         <button class="btn" style="margin-left:auto" onclick="procManualAdd()">Add without barcode</button>
       </div>
       <div class="sub" style="margin-top:8px;color:var(--ink-soft)">Nothing is taken from stock until you end the procedure — fix mistakes freely. Your list auto-saves to the server, and you can press <strong>Save progress</strong> anytime; a refresh or crash will not lose your items.</div>
@@ -3724,6 +3726,7 @@ const STK_DEFAULT = { left:14, right:7, top:4, bottom:4, gapX:0, gapY:0, cols:3,
 let stkr = Object.assign({}, STK_DEFAULT);
 let stkMode = 'patient';           // 'patient' | 'codes'
 const stkPatient = { name:'', dob:'', pat:'', addr:'', surgeon:'' };
+const stkMed = { med:'', mixed:'' };      // medication label tab (blocks / infiltrations / locals)
 const stkSel = new Set();          // selected item indices for codes mode
 let stkCodeType = 'barcode';       // 'barcode' | 'qr'
 
@@ -3744,9 +3747,10 @@ function stickersView(){
     <div class="sub">Prints onto 21-per-sheet A4 label paper (3 × 7). Adjust margins for a perfect fit, save a preset once it's spot on.</div>
     <div style="border-bottom:1px solid var(--line);margin-bottom:16px;display:flex;gap:4px">
       ${tabBtn('patient','Patient stickers')}
+      ${tabBtn('medication','Medication labels')}
       ${tabBtn('codes','Barcode / QR stickers')}
     </div>
-    ${stkMode==='patient'?stkPatientTab():stkCodesTab()}
+    ${stkMode==='patient'?stkPatientTab():stkMode==='medication'?stkMedTab():stkCodesTab()}
     ${stkMarginPanel()}`;
 }
 
@@ -3810,6 +3814,137 @@ function stkPatientTab(){
 }
 function stkQty(d){
   const el=$('#stkQty'); let v=Math.max(1,(parseInt(el.value)||1)+d); el.value=v;
+}
+
+
+/* --- medication labels tab (blocks, infiltrations, locals) --- */
+function medPresets(){
+  try{ const s=(state.settings||[]).find(x=>x.Key==='med_sticker_presets');
+       const a=JSON.parse((s&&s.Value)||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; }
+}
+async function persistMedPresets(list){
+  const json = JSON.stringify(list);
+  const s=(state.settings||[]).find(x=>x.Key==='med_sticker_presets');
+  if(s) s.Value=json; else (state.settings=state.settings||[]).push({Key:'med_sticker_presets',Value:json});
+  render();
+  if(LIVE){ try{ await api({action:'medPresetsSave', json}); }
+    catch(err){ toast('Preset not saved to server — '+err.message); } }
+}
+function saveMedPreset(){
+  if(!stkMed.med.trim()){ toast('Enter the medication first'); return; }
+  const list = medPresets();
+  const med = stkMed.med.trim(), mixed = stkMed.mixed.trim();
+  if(list.some(p=>p.med===med && (p.mixed||'')===mixed)){ toast('Already saved'); return; }
+  list.push({med, mixed});
+  persistMedPresets(list);
+  toast('Medication saved for future use');
+}
+function useMedPreset(i){
+  const p = medPresets()[i]; if(!p) return;
+  stkMed.med = p.med; stkMed.mixed = p.mixed||'';
+  render();
+}
+function delMedPreset(i){
+  const list = medPresets(); if(!list[i]) return;
+  if(!confirm('Remove "'+list[i].med+'" from saved medications?')) return;
+  list.splice(i,1);
+  persistMedPresets(list);
+}
+function stkMedN(d){
+  const el=$('#stkMedQty'); let v=Math.max(1,(parseInt(el.value)||1)+d); el.value=v;
+}
+function stkMedTab(){
+  const qa = s=>String(s||'').replace(/"/g,'&quot;');
+  const presets = medPresets();
+  const chips = presets.map((p,i)=>`<div style="display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:6px 8px 6px 14px;background:var(--mist)">
+      <span style="cursor:pointer;font-size:13px;font-weight:600" onclick="useMedPreset(${i})" title="Click to use">${escapeAttr(p.med)}${p.mixed?` <span style="color:var(--ink-soft);font-weight:400">+ ${escapeAttr(p.mixed)}</span>`:''}</span>
+      <button onclick="delMedPreset(${i})" title="Remove" style="border:none;background:none;color:var(--red);cursor:pointer;font-weight:700;font-size:13px">✕</button></div>`).join('');
+  const mixPrev = stkMed.mixed.trim();
+  return `<div style="max-width:560px">
+      <div class="m-row" style="margin-bottom:10px">
+        <label style="display:block;font-size:12.5px;color:var(--ink-soft);font-weight:600;margin-bottom:4px">Medication (name, strength, route)</label>
+        <input id="stkMedName" type="text" value="${qa(stkMed.med)}" placeholder="e.g. Bupivacaine 0.25% with adrenaline 1:200000"
+          oninput="stkMed.med=this.value"
+          style="width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:15px"></div>
+      <div class="m-row" style="margin-bottom:10px">
+        <label style="display:block;font-size:12.5px;color:var(--ink-soft);font-weight:600;margin-bottom:4px">Mixed with <span style="font-weight:400">(leave empty for none)</span></label>
+        <input id="stkMedMix" type="text" value="${qa(stkMed.mixed)}" placeholder="e.g. Normal Saline"
+          oninput="stkMed.mixed=this.value"
+          style="width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:15px"></div>
+    </div>
+    <div style="max-width:400px;border:1.5px solid var(--ink);border-radius:6px;padding:10px 12px;margin:6px 0 4px;background:#fff;color:#111;font-size:12px;line-height:1.9">
+      <div>Patient: <span style="display:inline-block;border-bottom:1px solid #111;width:220px"></span></div>
+      <div style="border:1.5px solid #111;border-radius:3px;padding:5px 8px;margin:4px 0;display:flex;justify-content:space-between;gap:8px;align-items:flex-end">
+        <strong style="font-size:12.5px">${stkMed.med.trim()?escapeAttr(stkMed.med):'Medication name, strength, route'}</strong>
+        <span style="white-space:nowrap">_____ ml</span></div>
+      <div>Mixed with: ${mixPrev?`<strong>${escapeAttr(mixPrev)}</strong> <span style="float:right">_____ ml</span>`:`<span style="display:inline-block;border-bottom:1px solid #111;width:190px"></span>`}</div>
+      <div style="margin-top:3px">Prepared by <span style="display:inline-block;border:1.2px solid #111;width:34px;height:18px;vertical-align:middle"></span>
+        &nbsp;&nbsp;Checked by <span style="display:inline-block;border:1.2px solid #111;width:34px;height:18px;vertical-align:middle"></span></div>
+    </div>
+    <div class="sub" style="margin-top:2px">Preview — patient name, amounts and initials are written by pen after printing.</div>
+    <div class="toolrow" style="margin-top:12px">
+      <div class="fld"><label style="font-size:12.5px;color:var(--ink-soft);font-weight:600">How many stickers</label>
+        <div class="stepper"><button onclick="stkMedN(-1)">−</button>
+          <input id="stkMedQty" value="21" inputmode="numeric" style="width:60px">
+          <button onclick="stkMedN(1)">＋</button></div></div>
+      <button class="btn primary" style="align-self:end;padding:12px 22px" onclick="printMedStickers()">🖨 Print sheet</button>
+      <button class="btn" style="align-self:end" onclick="downloadMedPDF()">Download PDF</button>
+      <button class="btn" style="align-self:end" onclick="saveMedPreset()">💾 Save medication</button>
+    </div>
+    <div class="sub">Same label sheet and margins as patient stickers (21 per A4). Saved medications stay below for one-click reuse.</div>
+    <h1 style="font-size:15px;margin-top:20px">Saved medications</h1>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">${chips||'<span style="color:var(--ink-soft);font-size:13.5px">None saved yet — fill the fields and press 💾 Save medication.</span>'}</div>`;
+}
+function medCell(){
+  const ink = hexToRgb(stkr.ink);
+  const med = stkMed.med.trim(), mix = stkMed.mixed.trim();
+  return { draw:(doc,x,y,w,h)=>{
+    doc.setTextColor(ink[0],ink[1],ink[2]);
+    doc.setDrawColor(ink[0],ink[1],ink[2]);
+    const L = x+3, R = x+w-3;
+    let cy = y+5.4;
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+    doc.text('Patient:', L, cy);
+    doc.setLineWidth(0.25);
+    doc.line(L+11, cy+0.6, R, cy+0.6);
+    cy += 4.4;
+    // printed medication box with a blank for the hand-written amount
+    const boxH = 12.5;
+    doc.setLineWidth(0.4);
+    doc.rect(L, cy-3.0, w-6, boxH);
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+    const lines = doc.splitTextToSize(med, w-24);
+    doc.text(lines.slice(0,2), L+2, cy+1.0);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+    doc.text('_____ ml', R-1.5, cy+boxH-5.0, {align:'right'});
+    cy += boxH+2.4;
+    // mixed with: printed diluent (+ blank amount) or an empty pen line
+    doc.text('Mixed with:', L, cy);
+    if(mix){
+      doc.setFont('helvetica','bold'); doc.text(mix, L+16.5, cy, {maxWidth:w-42});
+      doc.setFont('helvetica','normal'); doc.text('_____ ml', R, cy, {align:'right'});
+    } else {
+      doc.setLineWidth(0.25); doc.line(L+16.5, cy+0.6, R, cy+0.6);
+    }
+    cy += 5.6;
+    doc.setFontSize(7);
+    doc.text('Prepared by', L, cy+3.4);
+    doc.setLineWidth(0.35);
+    doc.rect(L+15.5, cy, 9.5, 5.2);
+    doc.text('Checked by', L+30, cy+3.4);
+    doc.rect(L+44.5, cy, 9.5, 5.2);
+  }};
+}
+function printMedStickers(){ medOut(false); }
+function downloadMedPDF(){ medOut(true); }
+function medOut(download){
+  if(!stkMed.med.trim()){ toast('Enter the medication first'); return; }
+  const n = Math.max(1, parseInt($('#stkMedQty').value)||21);
+  const cells = []; for(let i=0;i<n;i++) cells.push(medCell());
+  const doc = buildStickerDoc(cells);
+  if(download){ doc.save('Medication_Labels_'+stkMed.med.trim().replace(/[^A-Za-z0-9]+/g,'_').slice(0,40)+'.pdf'); toast('PDF downloaded'); }
+  else { doc.autoPrint(); window.open(doc.output('bloburl'),'_blank'); }
+  // medication details are kept (unlike patient details) so presets and reprints are easy
 }
 
 /* --- codes tab (barcode / QR for meds & consumables) --- */
