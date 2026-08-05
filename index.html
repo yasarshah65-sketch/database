@@ -536,6 +536,7 @@
     <p id="ohHint" style="font-size:12.5px;color:var(--ink-soft);margin-top:10px"></p>
   </div>
   <div class="m-actions">
+    <button class="btn" id="ohDelBtn" style="color:var(--red)" onclick="ohDelete()">🗑 Delete</button>
     <button class="btn" onclick="ohDlg.close()">Close</button>
     <button class="btn primary" id="ohSaveBtn" onclick="saveOnHandEdit()">Save changes</button>
   </div>
@@ -1676,6 +1677,7 @@ function openOnHand(i){
     ? 'Correct anything logged wrongly — name, code, tray count or expiry — then Save. Changes write to the Instruments register.'
     : 'View only. Ask an admin to correct anything logged wrongly.';
   $('#ohSaveBtn').style.display = isAdmin ? '' : 'none';
+  $('#ohDelBtn').style.display = isAdmin ? '' : 'none';
   ohDlg.showModal();
 }
 async function saveOnHandEdit(){
@@ -3533,6 +3535,11 @@ let _procSaving = false;
 async function procTempSave(silent){
   if(!activeProc) return;
   const cart = procCart();
+  if(!silent && cart.length>1){
+    // manual "Save progress" tidies the list A→Z; while scanning it stays in scan order
+    cart.sort((a,b)=>String(a.name).toLowerCase().localeCompare(String(b.name).toLowerCase()));
+    render();
+  }
   if(!LIVE){ if(!silent) toast('Saved (demo)'); return; }
   if(_procSaving) return;
   _procSaving = true;
@@ -3727,6 +3734,7 @@ let stkr = Object.assign({}, STK_DEFAULT);
 let stkMode = 'patient';           // 'patient' | 'codes'
 const stkPatient = { name:'', dob:'', pat:'', addr:'', surgeon:'' };
 const stkMed = { med:'', mixed:'' };      // medication label tab (blocks / infiltrations / locals)
+let stkTto = 0;                            // selected TTO (to-take-home) label
 const stkSel = new Set();          // selected item indices for codes mode
 let stkCodeType = 'barcode';       // 'barcode' | 'qr'
 
@@ -3748,9 +3756,10 @@ function stickersView(){
     <div style="border-bottom:1px solid var(--line);margin-bottom:16px;display:flex;gap:4px">
       ${tabBtn('patient','Patient stickers')}
       ${tabBtn('medication','Medication labels')}
+      ${tabBtn('tto','TTO / discharge')}
       ${tabBtn('codes','Barcode / QR stickers')}
     </div>
-    ${stkMode==='patient'?stkPatientTab():stkMode==='medication'?stkMedTab():stkCodesTab()}
+    ${stkMode==='patient'?stkPatientTab():stkMode==='medication'?stkMedTab():stkMode==='tto'?stkTtoTab():stkCodesTab()}
     ${stkMarginPanel()}`;
 }
 
@@ -3816,6 +3825,26 @@ function stkQty(d){
   const el=$('#stkQty'); let v=Math.max(1,(parseInt(el.value)||1)+d); el.value=v;
 }
 
+
+async function ohDelete(){
+  // admin: remove an on-hand instrument that was added by mistake
+  if(!(session&&session.role==='admin')) return;
+  const it = state.items[ohEditIx];
+  if(!it) return;
+  if(!confirm('DELETE "'+it.name+'" from the on-hand register?\n\nUse this only for items added by mistake. The instrument row is removed entirely and cannot be undone.')) return;
+  ohDlg.close();
+  const ix = state.items.indexOf(it);
+  if(ix>=0) state.items.splice(ix,1);
+  render(); toast('Deleted: '+it.name);
+  if(LIVE){
+    if(!it._row){ loadAll(); return; }
+    try{
+      await api({action:'instrumentDelete', row:it._row,
+        _origCode:it.code, _origBar:it.barcode, _origName:it.name, by:myName||''});
+      loadAll();
+    }catch(err){ toast('Not deleted on sheet — '+err.message); loadAll(); }
+  }
+}
 
 /* --- medication labels tab (blocks, infiltrations, locals) --- */
 function medPresets(){
@@ -3912,9 +3941,16 @@ function medCell(){
     const boxH = 12.5;
     doc.setLineWidth(0.4);
     doc.rect(L, cy-3.0, w-6, boxH);
-    doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
-    const lines = doc.splitTextToSize(med, w-24);
-    doc.text(lines.slice(0,2), L+2, cy+1.0);
+    doc.setFont('helvetica','bold');
+    // shrink the font until EVERY line of the medication text fits the box — never hide any
+    let mSize = 8.5, mLines = [med];
+    for(const s of [8.5,7.6,6.8,6.0,5.4,4.9]){
+      mSize = s; doc.setFontSize(s);
+      mLines = doc.splitTextToSize(med, w-24);
+      if(mLines.length * (s*0.37) <= boxH-3.2) break;
+    }
+    doc.setFontSize(mSize);
+    doc.text(mLines, L+2, cy+0.6);
     doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
     doc.text('_____ ml', R-1.5, cy+boxH-5.0, {align:'right'});
     cy += boxH+2.4;
@@ -3945,6 +3981,95 @@ function medOut(download){
   if(download){ doc.save('Medication_Labels_'+stkMed.med.trim().replace(/[^A-Za-z0-9]+/g,'_').slice(0,40)+'.pdf'); toast('PDF downloaded'); }
   else { doc.autoPrint(); window.open(doc.output('bloburl'),'_blank'); }
   // medication details are kept (unlike patient details) so presets and reprints are easy
+}
+
+
+/* --- TTO / discharge labels (to-take-home medication boxes) --- */
+const TTO_LABELS = [
+ {title:'Paracetamol 500mg tablets 16',
+  directions:'Take ....... tablet(s) ....... times a day as required for pain relief. Do not take more than 2 at any one time. Do not take more than 8 in 24 hours. Contains paracetamol. Do not take anything else containing paracetamol while taking this medicine. Talk to a doctor at once if you take too much of this medicine, even if you feel well.'},
+ {title:'Codeine Phosphate 30mg tablets 28',
+  directions:'Take ONE or TWO tablet(s) every FOUR to SIX hours when required for pain relief. Do not take more than 8 tablets in 24 hours. Warning: this medicine may make you feel sleepy. If this happens, do not drive or use tools or machines. Do not drink alcohol.'},
+ {title:'Co-Amoxiclav 625mg tablets 21',
+  directions:'Take ONE tablet THREE times a day for ....... days. Space the doses evenly through the day. Keep taking this medicine until the course is finished, unless you are told to stop.'},
+ {title:'Ondansetron 8mg tablets 10',
+  directions:'Take ONE tablet TWICE a day when required to relieve nausea and vomiting or as directed.'},
+ {title:'Senna tablets 7.5mg',
+  directions:'Take TWO tablets ONCE a day, preferably at bedtime. For occasional constipation relief. Do not use for more than a few days without medical advice.'},
+ {title:'Tranexamic Acid 500mg tablets 60',
+  directions:'Take ....... tablet(s) ....... times a day for ....... days. Discard remaining contents unless otherwise advised by your doctors.'}
+];
+function stkTtoN(d){
+  const el=$('#stkTtoQty'); let v=Math.max(1,(parseInt(el.value)||1)+d); el.value=v;
+}
+function stkTtoTab(){
+  const lab = TTO_LABELS[stkTto] || TTO_LABELS[0];
+  return `<div style="max-width:560px">
+      <div class="m-row" style="margin-bottom:10px">
+        <label style="display:block;font-size:12.5px;color:var(--ink-soft);font-weight:600;margin-bottom:4px">Medication (take-home)</label>
+        <select onchange="stkTto=+this.value;render()"
+          style="width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:15px">
+          ${TTO_LABELS.map((l,i)=>`<option value="${i}" ${i===stkTto?'selected':''}>${l.title}</option>`).join('')}
+        </select></div>
+    </div>
+    <div style="max-width:420px;border:1.5px solid var(--ink);border-radius:6px;padding:10px 12px;margin:6px 0 4px;background:#fff;color:#111">
+      <div style="font-weight:700;font-size:12px">${lab.title}</div>
+      <div style="font-size:10.5px;line-height:1.5;margin:4px 0 6px">${lab.directions}</div>
+      <div style="font-size:10.5px;line-height:1.9">PT Name: .................................................<br>
+        Dispensing Date: ......................................<br>
+        Dispensed by: ..........................................<br>
+        Checked by: ............................................</div>
+      <div style="font-weight:700;font-size:10.5px;margin-top:4px">Keep out of the sight and reach of children</div>
+    </div>
+    <div class="sub" style="margin-top:2px">Preview — dotted blanks are completed by pen when dispensing.</div>
+    <div class="toolrow" style="margin-top:12px">
+      <div class="fld"><label style="font-size:12.5px;color:var(--ink-soft);font-weight:600">How many stickers</label>
+        <div class="stepper"><button onclick="stkTtoN(-1)">−</button>
+          <input id="stkTtoQty" value="21" inputmode="numeric" style="width:60px">
+          <button onclick="stkTtoN(1)">＋</button></div></div>
+      <button class="btn primary" style="align-self:end;padding:12px 22px" onclick="printTtoStickers()">🖨 Print sheet</button>
+      <button class="btn" style="align-self:end" onclick="downloadTtoPDF()">Download PDF</button>
+    </div>
+    <div class="sub">Same label sheet and margins as patient stickers (21 per A4).</div>`;
+}
+function ttoCell(lab){
+  const ink = hexToRgb(stkr.ink);
+  return { draw:(doc,x,y,w,h)=>{
+    doc.setTextColor(ink[0],ink[1],ink[2]);
+    const L = x+2.5, W = w-5;
+    let cy = y+4;
+    doc.setFont('helvetica','bold'); doc.setFontSize(7);
+    const tl = doc.splitTextToSize(lab.title, W);
+    doc.text(tl, L, cy); cy += tl.length*2.6 + 0.6;
+    // directions — auto-shrink so the whole text always fits above the field block
+    const fieldsH = 4*2.35 + 3.2;
+    const availH = (y+h-2.6) - cy - fieldsH;
+    doc.setFont('helvetica','normal');
+    let size = 6.2, lines = [lab.directions];
+    for(const s of [6.2,5.8,5.4,5.0,4.6]){
+      size = s; doc.setFontSize(s);
+      lines = doc.splitTextToSize(lab.directions, W);
+      if(lines.length * (s*0.36) <= availH) break;
+    }
+    doc.setFontSize(size);
+    doc.text(lines, L, cy); cy += lines.length*(size*0.36) + 1.2;
+    doc.setFontSize(5.6);
+    ['PT Name: ......................................','Dispensing Date: ..............................',
+     'Dispensed by: .................................','Checked by: ...................................']
+      .forEach(f=>{ doc.text(f, L, cy); cy += 2.35; });
+    doc.setFont('helvetica','bold'); doc.setFontSize(5.6);
+    doc.text('Keep out of the sight and reach of children', L, y+h-2.6);
+  }};
+}
+function printTtoStickers(){ ttoOut(false); }
+function downloadTtoPDF(){ ttoOut(true); }
+function ttoOut(download){
+  const lab = TTO_LABELS[stkTto] || TTO_LABELS[0];
+  const n = Math.max(1, parseInt($('#stkTtoQty').value)||21);
+  const cells = []; for(let i=0;i<n;i++) cells.push(ttoCell(lab));
+  const doc = buildStickerDoc(cells);
+  if(download){ doc.save('TTO_'+lab.title.replace(/[^A-Za-z0-9]+/g,'_').slice(0,40)+'.pdf'); toast('PDF downloaded'); }
+  else { doc.autoPrint(); window.open(doc.output('bloburl'),'_blank'); }
 }
 
 /* --- codes tab (barcode / QR for meds & consumables) --- */

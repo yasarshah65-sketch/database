@@ -35,7 +35,7 @@ const ACTION_ROLE = {
   moveStore:'admin', storeAdd:'admin', storeRemove:'admin', clearBarcode:'admin',
   assetAdd:'admin', assetUpdate:'admin',
   useEdit:'admin', useDelete:'admin',
-  setSetting:'admin', medPresetsSave:'common',
+  setSetting:'admin', medPresetsSave:'common', instrumentDelete:'admin',
   procStart:'common', procConsume:'common', procEnd:'common', procConsumeBatch:'common',
   procSaveCart:'common', procGetCart:'common', procCancel:'common',
   procReopen:'admin', procDelete:'admin', procUpdateMeta:'admin'
@@ -88,6 +88,7 @@ function doPost(e) {
       case 'useDelete':   return json_(useDelete_(req));
       case 'setSetting':  return json_(setSetting_(req));
       case 'medPresetsSave': return json_(medPresetsSave_(req));
+      case 'instrumentDelete': return json_(instrumentDelete_(req));
       case 'procStart':   return json_(procStart_(req));
       case 'procConsume': return json_(procConsume_(req));
       case 'procEnd':     return json_(procEnd_(req));
@@ -271,6 +272,42 @@ function setSetting_(q) {
   const at = vals.indexOf(String(q.key));
   if (at >= 0) sh.getRange(at + 1, 2).setValue(q.value);
   else sh.appendRow([q.key, q.value, 'Saved from the app']);
+  return { ok: true };
+}
+
+function instrumentDelete_(q) {
+  // admin: remove an Instruments row that was added by mistake.
+  // The row's identity (Code / Barcode / Name) is verified before deletion so the
+  // wrong row can never be removed, even if the supplied row number is stale.
+  const sh = ss_().getSheetByName('Instruments');
+  if (!sh) return { ok: false, error: 'Instruments tab missing' };
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const cCode = head.indexOf('Code'), cBar = head.indexOf('Barcode'), cName = head.indexOf('Name');
+  const last = sh.getLastRow();
+  const oc = String(q._origCode || '').trim(), ob = String(q._origBar || '').trim(),
+        on = String(q._origName || '').trim().toLowerCase();
+  function idAt(r) {
+    const v = sh.getRange(r, 1, 1, head.length).getValues()[0];
+    return { code: cCode >= 0 ? String(v[cCode] || '').trim() : '',
+             bar:  cBar  >= 0 ? String(v[cBar]  || '').trim() : '',
+             name: cName >= 0 ? String(v[cName] || '').trim().toLowerCase() : '' };
+  }
+  function matches(id) {
+    if (oc && id.code && id.code === oc) return true;
+    if (ob && id.bar && id.bar === ob) return true;
+    if (!oc && !ob && on && id.name === on) return true;
+    return false;
+  }
+  let row = 0;
+  const supplied = Number(q.row) || 0;
+  if (supplied >= 2 && supplied <= last && matches(idAt(supplied))) row = supplied;
+  else for (let r = 2; r <= last; r++) if (matches(idAt(r))) { row = r; break; }
+  if (!row) return { ok: false, error: 'Could not locate the instrument to delete — refresh and try again' };
+  const nm = cName >= 0 ? sh.getRange(row, cName + 1).getValue() : '';
+  sh.deleteRow(row);
+  logAct_('Instrument deleted', { tracker: 'Instruments', code: oc || ob,
+    name: String(nm || q._origName || ''), by: q.by,
+    note: 'Removed from on-hand register (added by mistake)' });
   return { ok: true };
 }
 
