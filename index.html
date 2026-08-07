@@ -238,6 +238,16 @@
   .chip{padding:7px 13px;border-radius:99px;border:1px solid var(--line);background:var(--mist);cursor:pointer;font-size:13px;font-weight:600;color:var(--ink-soft);transition:all .18s ease}
   .chip.on{background:var(--pine);color:#fff;border-color:var(--pine)}
 
+  /* ---------- rota ---------- */
+  .rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:8px}
+  .rslot{position:relative}
+  .rslot label{display:block;font-size:11px;color:var(--ink-soft);font-weight:600;margin-bottom:3px}
+  .rslot input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--card);color:var(--ink)}
+  .rslot input.rgap{border-color:var(--red);background:var(--red-bg)}
+  .rslot input.rack{border-style:dashed;background:var(--mist)}
+  .rsil{position:absolute;right:3px;top:20px;border:none;background:none;cursor:pointer;font-size:13px;padding:4px}
+  .racknote{font-size:11px;color:var(--ink-soft);margin-top:3px;background:var(--mist);border-radius:6px;padding:3px 7px}
+
   /* ---------- item remarks ---------- */
   tr.hasrem{background:linear-gradient(90deg, rgba(176,138,62,0.10), transparent 60%)}
   .remflag{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:99px;font-size:11.5px;font-weight:600;
@@ -448,6 +458,8 @@
     <a href="#obsolete" data-view="obsolete">Obsolete stock</a>
     <a href="#assets" data-view="assets">Assets</a>
     <a href="#stickers" data-view="stickers">Sticker printer</a>
+    <a href="#users" data-view="users">Users &amp; roles</a>
+    <a href="#rota" data-view="rota">Rota <span id="rotaBadge" style="display:none;background:var(--red);color:#fff;border-radius:99px;padding:1px 8px;font-size:11px;font-weight:800;margin-left:6px"></span></a>
     <a href="#procedures" data-view="procedures">Procedure costing</a>
   </nav>
 
@@ -1374,12 +1386,26 @@ function sterilView(){
 }
 
 /* --- tab 1: log used --- */
+
+function sterilRowMatch(d,q){
+  return ['name','code','ref','usedBy','batch','status','sentBy'].some(k=>String(d[k]||'').toLowerCase().includes(q));
+}
+function sterilSearchRow(){
+  return `<div class="toolrow" style="margin-bottom:8px">
+    <input type="search" placeholder="Search name, code, batch, ref…" value="${String(window._sqSteril||'').replace(/"/g,'&quot;')}"
+      oninput="window._sqSteril=this.value;render()"
+      style="flex:1;min-width:220px;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+    ${window._sqSteril?`<button class="btn" onclick="window._sqSteril='';render()">Clear</button>`:''}
+  </div>`;
+}
 function sterilUseTab(pending){
+  const _sq=String(window._sqSteril||'').toLowerCase().trim();
+  if(_sq) pending = pending.filter(d=>sterilRowMatch(d,_sq));
   const opts = state.items.filter(i=>i.tracker==='instruments')
     .map(i=>`<option value="${i.code||i.barcode}">${i.name} — ${i.code||i.barcode}</option>`).join('');
   const rows = pending.map(d=>{
     const ix = state.dispatch.indexOf(d);
-    return `<tr>
+    return `${sterilSearchRow()}<tr>
       <td data-label=""><strong>${d.name||d.code}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${d.code}</span></td>
       <td data-label="Used">${dFmt(d.dateUsed)}${d.usedBy?' · '+d.usedBy:''}</td>
       <td class="qty" data-label="Qty">${d.qtyOut}</td>
@@ -1452,10 +1478,12 @@ function logUsed(codeArg, qtyArg){
 
 /* --- tab 2: dispatch --- */
 function sterilDispatchTab(pending){
+  const _sq=String(window._sqSteril||'').toLowerCase().trim();
+  if(_sq) pending = pending.filter(d=>sterilRowMatch(d,_sq));
   const allSel = pending.length && pending.every(d=>selDsp.has(state.dispatch.indexOf(d)));
   const rows = pending.map(d=>{
     const ix = state.dispatch.indexOf(d);
-    return `<tr>
+    return `${sterilSearchRow()}<tr>
       <td data-label="" style="display:flex;gap:10px;align-items:center">
         <input type="checkbox" ${selDsp.has(ix)?'checked':''} onchange="toggleSel(selDsp,${ix})" style="width:18px;height:18px">
         <span><strong>${d.name||d.code}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${d.code}</span></span></td>
@@ -1500,6 +1528,8 @@ async function doDispatch(){
 
 /* --- tab 3: receive --- */
 function sterilReceiveTab(out){
+  const _sq=String(window._sqSteril||'').toLowerCase().trim();
+  if(_sq) out = out.filter(d=>sterilRowMatch(d,_sq));
   const allSel = out.length && out.every(d=>selRcv.has(state.dispatch.indexOf(d)));
   const byRef = {};
   out.forEach(d=>{ (byRef[d.ref||'(no ref)'] = byRef[d.ref||'(no ref)']||[]).push(d); });
@@ -1510,7 +1540,7 @@ function sterilReceiveTab(out){
     </div>` : '';
   const rows = out.map(d=>{
     const ix = state.dispatch.indexOf(d);
-    return `<tr>
+    return `${sterilSearchRow()}<tr>
       <td data-label="" style="display:flex;gap:10px;align-items:center">
         <input type="checkbox" ${selRcv.has(ix)?'checked':''} onchange="toggleSel(selRcv,${ix})" style="width:18px;height:18px">
         <span><strong>${d.name||d.code}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${d.code}</span></span></td>
@@ -1622,7 +1652,7 @@ function sterilOnHandTab(){
       ? '<span class="badge b-exp">At CSSD</span>' : '<span class="badge b-ok">At Bollin</span>';
     const gi = state.items.indexOf(it);
     return `<tr style="${d!=null&&d<=60?'background:#FFF7F0':''};cursor:pointer" onclick="openOnHand(${gi})"
-        title="Click for details${(session&&session.role==='admin')?' / edit':''}">
+        title="Click for details${(session&&isAdmin())?' / edit':''}">
       <td data-label=""><strong>${it.name}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${it.code||it.barcode||''}</span></td>
       <td data-label="Type">${it.cat||'—'}</td>
       <td class="qty" data-label="In tray">${it.qtyTray!=null?it.qtyTray:(it.qty||1)}</td>
@@ -1659,7 +1689,7 @@ function openOnHand(i){
   const it = state.items[i];
   if(!it || it.tracker!=='instruments') return;
   ohEditIx = i;
-  const isAdmin = session && session.role==='admin';
+  const isAdmin = session && isAdmin();
   $('#ohTitle').textContent = it.name;
   $('#ohName').value = it.name||'';
   $('#ohCode').value = it.code||'';
@@ -1682,7 +1712,7 @@ function openOnHand(i){
 }
 async function saveOnHandEdit(){
   const it = state.items[ohEditIx];
-  if(!it || !(session&&session.role==='admin')) return;
+  if(!it || !(session&&isAdmin())) return;
   const name = $('#ohName').value.trim();
   if(!name){ toast('Name is required'); return; }
   if(LIVE && !it._row){ toast('Still syncing this item — try again in a moment'); loadAll(); return; }
@@ -3329,7 +3359,7 @@ function procStartPanel(open){
 function procConsolePanel(){
   const p = activeProc;
   const cart = procCart();
-  const showMoney = (session && session.role==='admin');   // financials ADMIN ONLY (#3)
+  const showMoney = (session && isAdmin());   // financials ADMIN ONLY (#3)
   const total = cart.reduce((s,l)=>s+(l.unitCost===''?0:Number(l.unitCost)*l.qty),0);
   const missingCost = showMoney && cart.some(l=>l.unitCost===''||l.unitCost==null);
   const stockOf = l => { const it = state.items.find(i=>i.tracker===l.tracker &&
@@ -3358,7 +3388,7 @@ function procConsolePanel(){
         <div><div style="font-size:12px;color:var(--ink-soft)">Procedure</div><strong>${p.procedure||'—'}</strong></div>
         <div><div style="font-size:12px;color:var(--ink-soft)">Date</div><strong>${p.date?new Date(p.date).toLocaleDateString('en-GB'):'—'}</strong></div>
         ${p.patientRef?`<div><div style="font-size:12px;color:var(--ink-soft)">Patient</div><strong>${p.patientRef}</strong></div>`:''}
-        ${(session&&session.role==='admin')?`<button class="btn" style="padding:6px 12px;font-size:12.5px;align-self:center" onclick="procEditMeta()" title="Correct surgeon / procedure / date / patient ref">✎ Edit details</button>`:''}
+        ${(session&&isAdmin())?`<button class="btn" style="padding:6px 12px;font-size:12.5px;align-self:center" onclick="procEditMeta()" title="Correct surgeon / procedure / date / patient ref">✎ Edit details</button>`:''}
         ${showMoney?`<div style="margin-left:auto;text-align:right;padding-top:26px">
           <div style="font-size:12px;color:var(--ink-soft)">Running total</div>
           <strong style="font-size:22px;color:var(--pine)">£${total.toFixed(2)}</strong></div>`:''}
@@ -3376,7 +3406,7 @@ function procConsolePanel(){
       <div class="toolrow" style="margin-top:14px">
         <button class="btn" style="padding:12px 20px" onclick="procTempSave(false)" title="Save your progress to the server without ending. Stock is NOT touched.">💾 Save progress</button>
         <button class="btn primary" style="padding:12px 24px" onclick="endProc()">■ End procedure &amp; consume stock</button>
-        ${(session&&session.role==='admin')?`<button class="btn" onclick="downloadProcPDF('${p.procedureId}')">Download case sheet PDF</button>`:''}
+        ${(session&&isAdmin())?`<button class="btn" onclick="downloadProcPDF('${p.procedureId}')">Download case sheet PDF</button>`:''}
         <span id="procSaveState" style="color:var(--ink-soft);font-size:12.5px">${activeProc&&activeProc._savedAt?'All changes saved':'Not saved yet'}</span>
         <span style="margin-left:auto;color:var(--ink-soft);font-size:13px">${cart.length} line(s)</span>
       </div>
@@ -3384,7 +3414,7 @@ function procConsolePanel(){
 }
 
 function procHistoryPanel(){
-  const showMoney = (session && session.role==='admin');    // financials ADMIN ONLY (#3)
+  const showMoney = (session && isAdmin());    // financials ADMIN ONLY (#3)
   const closed = state.procedures.filter(p=>p.status!=='Open').slice().reverse().slice(0,20);
   if(!closed.length && !state.procedures.length) return '';
   // summary by surgeon (admin only)
@@ -3403,7 +3433,7 @@ function procHistoryPanel(){
     <td data-label="Patient">${p.patientRef||'—'}</td>
     <td data-label="Status">${p.status}</td>
     ${showMoney?`<td class="qty" data-label="Total £">£${(Number(p.totalCost)||0).toFixed(2)}</td>`:''}
-    ${(session&&session.role==='admin')?`<td class="rowbtns" data-label="">
+    ${(session&&isAdmin())?`<td class="rowbtns" data-label="">
         <button onclick="downloadProcPDF('${p.procedureId}')">PDF</button>
         <button onclick="procEditClosed('${p.procedureId}')" title="Reopen this procedure for editing — its consumed stock is returned until you end it again">Edit</button>
         <button onclick="procDeleteClosed('${p.procedureId}')" style="color:var(--red)" title="Delete this procedure and return all consumed stock to the inventories">Delete</button>
@@ -3630,7 +3660,7 @@ async function cancelProc(){
 
 // ---- #1: admin corrects surgeon / procedure / date / patient ref ----
 async function procEditMeta(){
-  if(!activeProc || !(session&&session.role==='admin')) return;
+  if(!activeProc || !(session&&isAdmin())) return;
   const surgeon = prompt('Surgeon:', activeProc.surgeon||''); if(surgeon===null) return;
   const procedure = prompt('Procedure:', activeProc.procedure||''); if(procedure===null) return;
   const date = prompt('Date (YYYY-MM-DD):', activeProc.date? String(activeProc.date).slice(0,10):todayISO()); if(date===null) return;
@@ -3648,7 +3678,7 @@ async function procEditMeta(){
 
 // ---- #1: admin reopens a closed procedure; consumed stock is returned until re-ended ----
 async function procEditClosed(procId){
-  if(!(session&&session.role==='admin')) return;
+  if(!(session&&isAdmin())) return;
   if(activeProc){ toast('Finish or cancel the current procedure first'); return; }
   if(!confirm('Reopen this procedure for editing?\n\nEverything it consumed will be RETURNED to stock now, and consumed again (with your corrections) when you end it. The case sheet will reflect the corrected list.')) return;
   if(!LIVE){ toast('Not available in demo mode'); return; }
@@ -3672,7 +3702,7 @@ async function procEditClosed(procId){
 
 // ---- #1: admin deletes a procedure; consumed stock returns to the inventories ----
 async function procDeleteClosed(procId){
-  if(!(session&&session.role==='admin')) return;
+  if(!(session&&isAdmin())) return;
   const p = state.procedures.find(x=>x.procedureId===procId);
   const label = p ? (p.surgeon||'—')+' — '+(p.procedure||'') : procId;
   if(!confirm('Delete procedure "'+label+'"?\n\nAll stock it consumed will be RETURNED to the inventories, its cost lines will be removed, and it will disappear from history and surgeon totals.')) return;
@@ -3780,7 +3810,7 @@ function stkMarginPanel(){
         <input type="color" value="${stkr.ink}" style="width:56px;height:40px;border:1px solid var(--line);border-radius:8px;padding:2px"
           oninput="stkr.ink=this.value"></div>
       <button class="btn" onclick="stkr=Object.assign({},STK_DEFAULT);render()">Reset defaults</button>
-      ${(session&&session.role==='admin')?`<button class="btn" onclick="saveStkPreset()">💾 Save these settings (admin)</button>`:''}
+      ${(session&&isAdmin())?`<button class="btn" onclick="saveStkPreset()">💾 Save these settings (admin)</button>`:''}
     </div>
     <div class="sub" style="margin-top:8px">Tip: print one test sheet, measure any drift, nudge the margin by that amount, reprint. Once perfect, save.</div>
   </div>`;
@@ -3828,7 +3858,7 @@ function stkQty(d){
 
 async function ohDelete(){
   // admin: remove an on-hand instrument that was added by mistake
-  if(!(session&&session.role==='admin')) return;
+  if(!(session&&isAdmin())) return;
   const it = state.items[ohEditIx];
   if(!it) return;
   if(!confirm('DELETE "'+it.name+'" from the on-hand register?\n\nUse this only for items added by mistake. The instrument row is removed entirely and cannot be undone.')) return;
@@ -3986,18 +4016,32 @@ function medOut(download){
 
 /* --- TTO / discharge labels (to-take-home medication boxes) --- */
 const TTO_LABELS = [
- {title:'Paracetamol 500mg tablets 16',
+ {title:'Paracetamol 500mg tablets .......',
   directions:'Take ....... tablet(s) ....... times a day as required for pain relief. Do not take more than 2 at any one time. Do not take more than 8 in 24 hours. Contains paracetamol. Do not take anything else containing paracetamol while taking this medicine. Talk to a doctor at once if you take too much of this medicine, even if you feel well.'},
- {title:'Codeine Phosphate 30mg tablets 28',
-  directions:'Take ONE or TWO tablet(s) every FOUR to SIX hours when required for pain relief. Do not take more than 8 tablets in 24 hours. Warning: this medicine may make you feel sleepy. If this happens, do not drive or use tools or machines. Do not drink alcohol.'},
- {title:'Co-Amoxiclav 625mg tablets 21',
-  directions:'Take ONE tablet THREE times a day for ....... days. Space the doses evenly through the day. Keep taking this medicine until the course is finished, unless you are told to stop.'},
- {title:'Ondansetron 8mg tablets 10',
-  directions:'Take ONE tablet TWICE a day when required to relieve nausea and vomiting or as directed.'},
- {title:'Senna tablets 7.5mg',
-  directions:'Take TWO tablets ONCE a day, preferably at bedtime. For occasional constipation relief. Do not use for more than a few days without medical advice.'},
- {title:'Tranexamic Acid 500mg tablets 60',
-  directions:'Take ....... tablet(s) ....... times a day for ....... days. Discard remaining contents unless otherwise advised by your doctors.'}
+ {title:'Codeine Phosphate 30mg tablets .......',
+  directions:'Take ....... tablet(s) ....... times a day when required for pain relief. Do not take more than 8 tablets in 24 hours. Warning: this medicine may make you feel sleepy. If this happens, do not drive or use tools or machines. Do not drink alcohol.'},
+ {title:'Co-Amoxiclav 625mg tablets .......',
+  directions:'Take ....... tablet(s) ....... times a day for ....... days. Space the doses evenly through the day. Keep taking this medicine until the course is finished, unless you are told to stop.'},
+ {title:'Ondansetron 8mg tablets .......',
+  directions:'Take ....... tablet(s) ....... times a day when required to relieve nausea and vomiting, or as directed.'},
+ {title:'Senna 7.5mg tablets .......',
+  directions:'Take ....... tablet(s) ....... times a day, preferably at bedtime. For occasional constipation relief. Do not use for more than a few days without medical advice.'},
+ {title:'Tranexamic Acid 500mg tablets .......',
+  directions:'Take ....... tablet(s) ....... times a day for ....... days. Discard remaining contents unless otherwise advised by your doctors.'},
+ {title:'Etoricoxib 60mg tablets .......',
+  directions:'Take ....... tablet(s) ....... times a day with or after food. This is an anti-inflammatory painkiller — do not take other anti-inflammatory painkillers (e.g. ibuprofen, naproxen, aspirin) while taking it. Stop taking and seek advice if you get indigestion, stomach pain or black stools.'},
+ {title:'Enoxaparin 40mg pre-filled syringes .......',
+  directions:'Inject ....... syringe(s) under the skin ....... time(s) a day for ....... days, as shown by your nurse. This medicine helps prevent blood clots. Do not rub the injection site. Contact the clinic if you notice unusual bruising or bleeding.'},
+ {title:'Enoxaparin 20mg pre-filled syringes .......',
+  directions:'Inject ....... syringe(s) under the skin ....... time(s) a day for ....... days, as shown by your nurse. This medicine helps prevent blood clots. Do not rub the injection site. Contact the clinic if you notice unusual bruising or bleeding.'},
+ {title:'Ibuprofen 200mg / 400mg tablets .......',
+  directions:'Take ....... tablet(s) ....... times a day with or after food, when required for pain relief. Do not take more than the dose you have been given. Do not take other anti-inflammatory painkillers while taking this medicine. Stop taking and seek advice if you get indigestion or stomach pain.'},
+ {title:'Co-codamol 30/500 tablets .......',
+  directions:'Take ....... tablet(s) ....... times a day when required for pain relief. Do not take more than 8 tablets in 24 hours. Contains paracetamol — do not take anything else containing paracetamol. May cause drowsiness; if affected do not drive or use machines. Do not drink alcohol.'},
+ {title:'Lactulose syrup',
+  directions:'Take ....... ml ....... times a day for constipation. It may take up to 48 hours to work. Drink plenty of fluids while taking this medicine.'},
+ {title:'Cyclizine 50mg tablets .......',
+  directions:'Take ....... tablet(s) ....... times a day when required to relieve nausea and vomiting, or as directed. May cause drowsiness; if affected do not drive or use machines. Avoid alcohol.'}
 ];
 function stkTtoN(d){
   const el=$('#stkTtoQty'); let v=Math.max(1,(parseInt(el.value)||1)+d); el.value=v;
@@ -4237,6 +4281,218 @@ function codeOut(download){
   else { doc.autoPrint(); window.open(doc.output('bloburl'),'_blank'); }
 }
 
+
+/* ---------------- users & roles (admin / superadmin) ---------------- */
+function usersView(){
+  if(!isAdmin()) return '<h1>Users</h1><div class="sub">Admins only.</div>';
+  const supers = (state.users||[]).filter(u=>u.role==='superadmin').length;
+  const rows = (state.users||[]).map((u,i)=>`<tr>
+    <td data-label=""><strong>${u.name||u.username}</strong> <span class="code" style="font-family:var(--mono);font-size:12px">${u.username}</span></td>
+    <td data-label="Active">${String(u.active).toLowerCase()==='yes'?'Yes':'No'}</td>
+    <td data-label="Role"><select onchange="changeUserRole(${i},this)" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+      ${['common','staff','admin','superadmin'].map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join('')}
+    </select></td></tr>`).join('');
+  return `<h1>Users &amp; roles</h1>
+    <div class="sub">Appoint the <strong>super admins</strong> here (target: 3). Super admins can do everything admins can, plus the <strong>Rota</strong> and future management-only areas. Role changes apply from the user's next reload or sign-in.</div>
+    <div class="sub">Current super admins: <strong>${supers}</strong> of 3</div>
+    <table><thead><tr><th>User</th><th>Active</th><th>Role</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="3" style="color:var(--ink-soft)">No users loaded — reload the app.</td></tr>'}</tbody></table>`;
+}
+async function changeUserRole(i, sel){
+  const u = (state.users||[])[i]; if(!u || !isAdmin()){ if(sel&&u) sel.value=u.role; return; }
+  const role = sel.value;
+  const self = session && session.username && String(session.username).toLowerCase()===u.username.toLowerCase();
+  if(!confirm('Change '+(u.name||u.username)+' to '+role.toUpperCase()+'?'+
+      (self?'\n\nThis is YOUR OWN account — lowering it may lock you out of admin areas.':''))){
+    sel.value = u.role; return;
+  }
+  const old = u.role; u.role = role; render(); toast('Role updated: '+u.username+' → '+role);
+  if(LIVE){
+    try{ await api({action:'userSetRole', username:u.username, role, by:myName||''}); }
+    catch(err){ u.role=old; render(); toast('Not saved — '+err.message); }
+  }
+}
+
+/* ---------------- theatre rota (superadmin only) ---------------- */
+let _rotaWk = 0;                    // week offset from the current week
+const _rotaDrafts = {};             // unsaved edits, keyed by date
+const ROTA_T_ROLES = [['surgeon','Surgeon',1],['surgeon2','2nd surgeon',0],['anaes','Anaesthetist',1],
+  ['sfa','SFA / practitioner',1],['scrub1','Scrub 1',1],['scrub2','Scrub 2',1],['scrub3','Scrub 3',0],['odp','ODP',1]];
+const ROTA_D_ROLES = [['hca','HCA',1],['ward','Ward nurse',1],['recovery','Recovery nurse / ODP',1],['rmo','RMO nurse on call',1]];
+
+function rotaSheetDate(v){
+  if(v==null || v==='') return '';
+  const s = String(v);
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;                    // stored as text — exact
+  const d = new Date(s);
+  if(isNaN(d)) return s.slice(0,10);
+  // legacy Date cells serialise in UTC; midday-shift lands the intended calendar date
+  return new Date(d.getTime()+12*3600*1000).toISOString().slice(0,10);
+}
+function rotaMonday(off){
+  const d = new Date(); const wd=(d.getDay()+6)%7;
+  d.setDate(d.getDate()-wd+7*(off||0)); d.setHours(12,0,0,0);
+  return d;
+}
+function rotaISO(d){ return d.toISOString().slice(0,10); }
+function blankRotaDay(date){
+  const th = ()=>({type:'GA',detail:'',surgeon:'',surgeon2:'',anaes:'',sfa:'',scrub1:'',scrub2:'',scrub3:'',odp:''});
+  return {date, theatres:0, hca:'',ward:'',recovery:'',rmo:'',notes:'', acks:{}, t1:th(), t2:th()};
+}
+function rotaSaved(date){ return (state.rota||[]).find(r=>r.date===date); }
+function rotaDayObj(date){ return _rotaDrafts[date] || rotaSaved(date) || blankRotaDay(date); }
+function rotaDraft(date){
+  if(!_rotaDrafts[date]) _rotaDrafts[date] = JSON.parse(JSON.stringify(rotaDayObj(date)));
+  return _rotaDrafts[date];
+}
+function rotaSet(date, path, val){
+  const d = rotaDraft(date);
+  if(path.indexOf('.')>0){ const p=path.split('.'); d[p[0]][p[1]] = val; }
+  else d[path] = val;
+  render();
+}
+function rotaGaps(day){
+  const gaps=[];
+  if(!day || !(Number(day.theatres)>0)) return gaps;
+  for(let t=1;t<=Math.min(2,Number(day.theatres));t++){
+    const th = day['t'+t]||{};
+    ROTA_T_ROLES.forEach(([k,lab,req])=>{
+      if(!req) return;
+      if(th.type==='LA' && (k==='anaes'||k==='odp'||k==='sfa')) return;   // LA lists run without these
+      if(!String(th[k]||'').trim()) gaps.push({key:'t'+t+'.'+k, label:'Theatre '+t+' — '+lab});
+    });
+  }
+  ROTA_D_ROLES.forEach(([k,lab])=>{ if(!String(day[k]||'').trim()) gaps.push({key:k, label:lab}); });
+  return gaps;
+}
+function rotaOpenGaps(day){ return rotaGaps(day).filter(g=>!(day.acks && day.acks[g.key])); }
+function rotaAck(date, key){
+  const note = prompt('Cover note for this gap — why is it OK to run without it?\n(e.g. "Second scrub arranged — agency", "Not needed for this list")');
+  if(note===null || !note.trim()) return;
+  const d = rotaDraft(date);
+  d.acks[key] = note.trim()+' — '+(myName||'')+', '+new Date().toLocaleDateString('en-GB');
+  render(); toast('Gap silenced with a note — remember to Save the day');
+}
+function rotaUnack(date, key){ const d=rotaDraft(date); delete d.acks[key]; render(); }
+async function rotaSaveDay(date){
+  if(!(session&&session.role==='superadmin')) return;
+  const d = rotaDraft(date);
+  const f = { Date:date, Theatres:Number(d.theatres)||0, HCA:d.hca||'', WardNurse:d.ward||'',
+    RecoveryNurse:d.recovery||'', RMOOnCall:d.rmo||'', Notes:d.notes||'', AcksJSON:JSON.stringify(d.acks||{}) };
+  [1,2].forEach(t=>{ const th=d['t'+t]||{};
+    f['T'+t+'_Type']=th.type||''; f['T'+t+'_Detail']=th.detail||'';
+    f['T'+t+'_Surgeon']=th.surgeon||''; f['T'+t+'_Surgeon2']=th.surgeon2||'';
+    f['T'+t+'_Anaesthetist']=th.anaes||''; f['T'+t+'_SFA']=th.sfa||'';
+    f['T'+t+'_Scrub1']=th.scrub1||''; f['T'+t+'_Scrub2']=th.scrub2||'';
+    f['T'+t+'_Scrub3']=th.scrub3||''; f['T'+t+'_ODP']=th.odp||''; });
+  const obj = JSON.parse(JSON.stringify(d));
+  const ix = (state.rota||[]).findIndex(r=>r.date===date);
+  if(ix>=0) state.rota[ix]=obj; else state.rota.push(obj);
+  delete _rotaDrafts[date];
+  render(); updateRotaBadge();
+  toast('Rota saved — '+new Date(date+'T12:00').toLocaleDateString('en-GB'));
+  if(LIVE){
+    try{ await api({action:'rotaSave', date:date, fields:f, by:myName||''}); }
+    catch(err){ toast('Not saved to sheet — '+err.message); }
+  }
+}
+function rotaCopyPrev(date){
+  const prevIso = rotaISO(new Date(new Date(date+'T12:00').getTime()-7*864e5));
+  const prev = rotaSaved(prevIso);
+  if(!prev){ toast('Nothing saved on the same day last week'); return; }
+  const cp = JSON.parse(JSON.stringify(prev)); cp.date=date; cp.acks={};
+  _rotaDrafts[date]=cp; render();
+  toast('Copied from last week — adjust, then Save day');
+}
+function updateRotaBadge(){
+  const el = document.getElementById('rotaBadge'); if(!el) return;
+  if(!(session && session.role==='superadmin')){ el.style.display='none'; return; }
+  const mon = rotaMonday(0); let n=0;
+  for(let i=0;i<7;i++) n += rotaOpenGaps(rotaDayObj(rotaISO(new Date(mon.getTime()+i*864e5)))).length;
+  el.textContent = n;
+  el.style.display = n ? '' : 'none';
+}
+function rotaSlot(date, day, key, label, req){
+  const val = key.indexOf('.')>0 ? String((day[key.split('.')[0]]||{})[key.split('.')[1]]||'') : String(day[key]||'');
+  const ack = day.acks && day.acks[key];
+  const empty = !val.trim();
+  const cls = empty ? (ack ? 'rack' : (req ? 'rgap' : '')) : '';
+  return `<div class="rslot">
+    <label>${label}${req?'':' <span style="font-weight:400">(optional)</span>'}</label>
+    <input list="rotaNames" value="${val.replace(/"/g,'&quot;')}" class="${cls}"
+      onchange="rotaSet('${date}','${key}',this.value)">
+    ${empty&&req&&!ack?`<button class="rsil" title="Silence this gap with a cover note" onclick="rotaAck('${date}','${key}')">🔕</button>`:''}
+    ${empty&&ack?`<div class="racknote">🔕 ${String(ack).replace(/</g,'&lt;')} <span onclick="rotaUnack('${date}','${key}')" style="cursor:pointer;color:var(--red);font-weight:700">✕</span></div>`:''}
+  </div>`;
+}
+function rotaDayCard(date){
+  const day = rotaDayObj(date);
+  const unsaved = !!_rotaDrafts[date];
+  const nice = new Date(date+'T12:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short'});
+  const open = rotaOpenGaps(day).length;
+  const running = Number(day.theatres)>0;
+  const head = `<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <h2 style="margin:0"><span class="led ${running?(open?'red':'green'):'amber'}"></span>${nice}</h2>
+      <select onchange="rotaSet('${date}','theatres',+this.value)" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+        <option value="0" ${!running?'selected':''}>No lists</option>
+        <option value="1" ${Number(day.theatres)===1?'selected':''}>1 theatre</option>
+        <option value="2" ${Number(day.theatres)===2?'selected':''}>2 theatres</option></select>
+      ${open?`<span style="background:var(--red-bg);color:var(--red);border:1px solid var(--red);border-radius:99px;padding:3px 10px;font-size:12px;font-weight:700">${open} gap${open>1?'s':''}</span>`
+            :running?`<span style="background:var(--ok-bg);color:var(--ok);border-radius:99px;padding:3px 10px;font-size:12px;font-weight:700">Covered ✓</span>`:''}
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn" onclick="rotaCopyPrev('${date}')" title="Copy the same weekday last week">⧉ Last week</button>
+        <button class="btn primary" onclick="rotaSaveDay('${date}')">${unsaved?'● Save day':'Save day'}</button></span></div>`;
+  if(!running) return `<div class="gaspanel">${head}</div>`;
+  const theatreBlock = t => { const th=day['t'+t]||{}; return `
+    <div style="border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <strong>Theatre ${t}</strong>
+        <select onchange="rotaSet('${date}','t${t}.type',this.value)" title="LA lists don't require anaesthetist, ODP or SFA"
+          style="padding:7px 10px;border:1px solid var(--line);border-radius:8px">
+          <option ${th.type!=='LA'?'selected':''}>GA</option><option ${th.type==='LA'?'selected':''}>LA</option></select>
+        <input placeholder="Detail — e.g. Overnight ×2, AM only, Transform" value="${String(th.detail||'').replace(/"/g,'&quot;')}"
+          onchange="rotaSet('${date}','t${t}.detail',this.value)"
+          style="flex:1;min-width:170px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+      </div>
+      <div class="rgrid" style="margin-top:8px">
+        ${ROTA_T_ROLES.map(([k,lab,req])=>{
+          const reqNow = !!req && !(th.type==='LA' && (k==='anaes'||k==='odp'||k==='sfa'));
+          return rotaSlot(date, day, 't'+t+'.'+k, lab, reqNow); }).join('')}
+      </div></div>`; };
+  return `<div class="gaspanel">${head}
+    ${theatreBlock(1)}${Number(day.theatres)>1?theatreBlock(2):''}
+    <div style="margin-top:10px"><strong style="font-size:13px">Day cover</strong>
+      <div class="rgrid" style="margin-top:6px">${ROTA_D_ROLES.map(([k,lab])=>rotaSlot(date,day,k,lab,true)).join('')}</div></div>
+    <div class="m-row" style="margin-top:10px"><label>Notes</label>
+      <input value="${String(day.notes||'').replace(/"/g,'&quot;')}" onchange="rotaSet('${date}','notes',this.value)"
+        placeholder="Holidays, Transform lists, extra info…"
+        style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px"></div>
+  </div>`;
+}
+function rotaView(){
+  if(!(session && session.role==='superadmin'))
+    return '<h1>Rota</h1><div class="sub">Only super admins can see the theatre rota.</div>';
+  const mon = rotaMonday(_rotaWk);
+  const days=[]; for(let i=0;i<7;i++) days.push(rotaISO(new Date(mon.getTime()+i*864e5)));
+  let open=0; days.forEach(d=>open+=rotaOpenGaps(rotaDayObj(d)).length);
+  const names=[...new Set((state.rota||[]).flatMap(r=>{
+    const v=[r.hca,r.ward,r.recovery,r.rmo];
+    [r.t1,r.t2].forEach(t=>{ if(t) v.push(t.surgeon,t.surgeon2,t.anaes,t.sfa,t.scrub1,t.scrub2,t.scrub3,t.odp); });
+    return v; }).filter(x=>x&&String(x).trim()).map(x=>String(x).trim()))].sort();
+  return `<h1>Theatre rota</h1>
+    <div class="sub">One card per day: set how many theatres run, the full team per theatre, and the day cover. Empty required slots glow red until filled — or press 🔕 to silence one with a cover note (e.g. "second scrub arranged — agency"). GA lists need an anaesthetist, ODP and SFA; LA lists don't. Type a few letters in any box to pick from names used before.</div>
+    ${open?`<div class="note" style="background:var(--red-bg);border-color:var(--red);color:var(--red)"><strong>⚠ ${open} uncovered slot${open>1?'s':''} this week</strong> — fill the highlighted boxes or add a cover note.</div>`
+          :`<div class="note" style="background:var(--ok-bg);border-color:var(--ok);color:var(--ok)"><strong>✓ Every running list this week is covered.</strong></div>`}
+    <div class="toolrow" style="align-items:center">
+      <button class="btn" onclick="_rotaWk--;render()">◀ Prev week</button>
+      <strong>${mon.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} – ${new Date(mon.getTime()+6*864e5).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</strong>
+      <button class="btn" onclick="_rotaWk++;render()">Next week ▶</button>
+      ${_rotaWk?`<button class="btn" onclick="_rotaWk=0;render()">Today</button>`:''}
+    </div>
+    <datalist id="rotaNames">${names.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist>
+    ${days.map(d=>rotaDayCard(d)).join('')}`;
+}
+
 /* ---------------- router ---------------- */
 function goHome(e){
   e.preventDefault();
@@ -4285,6 +4541,8 @@ function render(){
   else if(v==='gas'){ m.innerHTML = gasView(); paintDeliv('o2'); paintDeliv('air'); }
   else if(v==='stickers') m.innerHTML = stickersView();
   else if(v==='procedures') m.innerHTML = procView();
+  else if(v==='users') m.innerHTML = usersView();
+  else if(v==='rota') m.innerHTML = rotaView();
   else m.innerHTML = trackerView(v);
 }
 
@@ -4369,6 +4627,20 @@ async function loadAll(){
     state.alerts = data.alerts.map(a=>({_row:a._row, ts:a.Timestamp, type:a.Type,
       item:a.Item, detail:a.Detail, status:a.Status, tracker:a.Tracker}));
     state.settings = data.settings || state.settings || [];
+    state.users = (data.users||[]).map(u=>({username:String(u.Username||''), name:String(u.DisplayName||''),
+      role:String(u.Role||'common'), active:String(u.Active||'')}));
+    state.rota = (data.rota||[]).map(r=>{
+      const S=v=>v!=null?String(v):'';
+      const day={ date:rotaSheetDate(r.Date), theatres:Number(r.Theatres)||0,
+        hca:S(r.HCA), ward:S(r.WardNurse), recovery:S(r.RecoveryNurse), rmo:S(r.RMOOnCall),
+        notes:S(r.Notes), acks:{}, t1:{}, t2:{} };
+      try{ day.acks = JSON.parse(r.AcksJSON||'{}')||{}; }catch(e){}
+      [1,2].forEach(t=>{ day['t'+t]={ type:S(r['T'+t+'_Type'])||'GA', detail:S(r['T'+t+'_Detail']),
+        surgeon:S(r['T'+t+'_Surgeon']), surgeon2:S(r['T'+t+'_Surgeon2']), anaes:S(r['T'+t+'_Anaesthetist']),
+        sfa:S(r['T'+t+'_SFA']), scrub1:S(r['T'+t+'_Scrub1']), scrub2:S(r['T'+t+'_Scrub2']),
+        scrub3:S(r['T'+t+'_Scrub3']), odp:S(r['T'+t+'_ODP']) }; });
+      return day; });
+    if(typeof updateRotaBadge==='function') updateRotaBadge();
     // ---- CRITICAL: preserve the in-progress procedure + its cart across a reload ----
     // The cart lives only in memory (activeProc._cart). If we blindly rebuilt procedures
     // from the sheet, an accidental loadAll() during a case would wipe every scanned item.
@@ -4442,8 +4714,10 @@ let myName = '';
 try { session = JSON.parse(localStorage.getItem('bollin_session')||'null'); } catch(e){}
 if(session) myName = session.displayName || '';
 
+function isAdmin(){ const r = session && session.role; return r==='admin' || r==='superadmin'; }
 const PERMS = {
   admin:  {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:1, stores:1, assets:1, useedit:1, sticker:1},
+  superadmin: {add:1, edit:1, labels:1, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:1, stores:1, assets:1, useedit:1, sticker:1},
   staff:  {add:0, edit:0, labels:0, values:1, stocktake:1, implants:1, dispatch:1, receive:1, respond:1, ack:1, alerts:1, instr:1, reports:1, obsolete:0, stores:0, assets:0, useedit:0, sticker:1},
   common: {add:0, edit:0, labels:0, values:0, stocktake:0, implants:0, dispatch:0, receive:0, respond:0, ack:0, alerts:0, instr:0, reports:0, obsolete:0, stores:0, assets:0, useedit:0, sticker:1}
 };
@@ -4513,6 +4787,8 @@ function viewAllowed(v){
   if(v==='assets') return can('assets');
   if(v==='stickers') return can('sticker');
   if(v==='procedures') return true;   // all roles can run procedures (financials hidden inside)
+  if(v==='users') return isAdmin();
+  if(v==='rota') return !!(session && session.role==='superadmin');
   return true;
 }
 function applyNavPerms(){

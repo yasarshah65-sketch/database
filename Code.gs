@@ -38,9 +38,10 @@ const ACTION_ROLE = {
   setSetting:'admin', medPresetsSave:'common', instrumentDelete:'admin',
   procStart:'common', procConsume:'common', procEnd:'common', procConsumeBatch:'common',
   procSaveCart:'common', procGetCart:'common', procCancel:'common',
-  procReopen:'admin', procDelete:'admin', procUpdateMeta:'admin'
+  procReopen:'admin', procDelete:'admin', procUpdateMeta:'admin',
+  userSetRole:'admin', rotaSave:'superadmin'
 };
-const ROLE_RANK = { common: 0, staff: 1, admin: 2 };
+const ROLE_RANK = { common: 0, staff: 1, admin: 2, superadmin: 3 };
 
 function doPost(e) {
   let req = {};
@@ -89,6 +90,8 @@ function doPost(e) {
       case 'setSetting':  return json_(setSetting_(req));
       case 'medPresetsSave': return json_(medPresetsSave_(req));
       case 'instrumentDelete': return json_(instrumentDelete_(req));
+      case 'userSetRole': return json_(userSetRole_(req));
+      case 'rotaSave':    return json_(rotaSave_(req));
       case 'procStart':   return json_(procStart_(req));
       case 'procConsume': return json_(procConsume_(req));
       case 'procEnd':     return json_(procEnd_(req));
@@ -275,6 +278,61 @@ function setSetting_(q) {
   return { ok: true };
 }
 
+const ROTA_HEADERS = ['Date','Theatres','HCA','WardNurse','RecoveryNurse','RMOOnCall','Notes','AcksJSON',
+  'T1_Type','T1_Detail','T1_Surgeon','T1_Surgeon2','T1_Anaesthetist','T1_SFA','T1_Scrub1','T1_Scrub2','T1_Scrub3','T1_ODP',
+  'T2_Type','T2_Detail','T2_Surgeon','T2_Surgeon2','T2_Anaesthetist','T2_SFA','T2_Scrub1','T2_Scrub2','T2_Scrub3','T2_ODP'];
+
+function userSetRole_(q) {
+  // admin / superadmin: change a user's role — used to appoint the super admins
+  const ok = ['common', 'staff', 'admin', 'superadmin'];
+  if (ok.indexOf(String(q.role)) < 0) return { ok: false, error: 'Unknown role' };
+  const sh = ss_().getSheetByName('Users');
+  if (!sh) return { ok: false, error: 'Users tab missing' };
+  const vals = sh.getDataRange().getValues();
+  const head = vals[0].map(String);
+  const cU = head.indexOf('Username'), cR = head.indexOf('Role');
+  for (let r = 1; r < vals.length; r++) {
+    if (String(vals[r][cU]).toLowerCase() === String(q.username || '').toLowerCase()) {
+      const old = String(vals[r][cR] || '');
+      sh.getRange(r + 1, cR + 1).setValue(q.role);
+      logAct_('User role changed', { tracker: 'Users', code: String(vals[r][cU]),
+        name: String(vals[r][cU]), by: q.by, note: old + ' → ' + q.role });
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'User not found' };
+}
+
+function rotaSave_(q) {
+  // superadmin: upsert one day of the theatre rota, keyed by Date (stored as plain text
+  // to avoid timezone shifts on read-back)
+  const sh = ss_().getSheetByName('Rota');
+  if (!sh) return { ok: false, error: 'Rota tab missing — run migrate()' };
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const dateStr = String(q.date || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return { ok: false, error: 'Bad date' };
+  const f = q.fields || {};
+  f.Date = dateStr;
+  const vals = sh.getDataRange().getValues();
+  const cD = head.indexOf('Date');
+  let row = 0;
+  for (let r = 1; r < vals.length; r++)
+    if (String(vals[r][cD]).slice(0, 10) === dateStr) { row = r + 1; break; }
+  const out = head.map(function (hn) { return f[hn] !== undefined ? f[hn] : ''; });
+  if (row) {
+    const cur = sh.getRange(row, 1, 1, head.length).getValues()[0];
+    head.forEach(function (hn, i) { if (f[hn] === undefined) out[i] = cur[i]; });
+    sh.getRange(row, 1, 1, head.length).setValues([out]);
+  } else {
+    sh.appendRow(out);
+    row = sh.getLastRow();
+  }
+  sh.getRange(row, cD + 1).setNumberFormat('@').setValue(dateStr);
+  logAct_('Rota updated', { tracker: 'Rota', code: dateStr, name: 'Theatre rota', by: q.by,
+    note: (Number(f.Theatres) || 0) + ' theatre(s)' });
+  return { ok: true };
+}
+
 function instrumentDelete_(q) {
   // admin: remove an Instruments row that was added by mistake.
   // The row's identity (Code / Barcode / Name) is verified before deletion so the
@@ -353,7 +411,11 @@ function getAll_(session) {
     gasChecks: readTab_('GasChecks').slice(-180),
     settings: readTab_('Settings'),
     procedures: procForRole_(session),
-    procLines: (session && session.role === 'admin') ? readTab_('ProcedureLines').slice(-500) : [],
+    procLines: (session && ROLE_RANK[session.role] >= 2) ? readTab_('ProcedureLines').slice(-500) : [],
+    users: (session && ROLE_RANK[session.role] >= 2) ? readTab_('Users').map(function (u) {
+      return { Username: u.Username, DisplayName: u.DisplayName, Role: u.Role, Active: u.Active };
+    }) : [],
+    rota: (session && session.role === 'superadmin') ? readTab_('Rota') : [],
     serverTime: new Date().toISOString()
   };
 }
@@ -962,6 +1024,14 @@ function migrate() {
       .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
     pr.setFrozenRows(1);
   }
+  // Rota tab (theatre staffing — superadmin only)
+  if (!ss.getSheetByName('Rota')) {
+    const rt = ss.insertSheet('Rota');
+    rt.getRange(1, 1, 1, ROTA_HEADERS.length).setValues([ROTA_HEADERS])
+      .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+    rt.setFrozenRows(1);
+    rt.getRange('A:A').setNumberFormat('@');   // dates as text — no timezone drift
+  }
   // ensure CartJSON column exists on Procedures (temporary-save security net)
   {
     const pr = ss.getSheetByName('Procedures');
@@ -1129,7 +1199,7 @@ const PROCLINE_HEADERS = ['ProcedureID','Timestamp','Tracker','Code','Name','Qty
 function procForRole_(session) {
   const rows = readTab_('Procedures');
   if (!session) return [];
-  if (session.role === 'admin') return rows;
+  if (ROLE_RANK[session.role] >= 2) return rows;
   return rows.map(function (r) {
     var o = {}; Object.keys(r).forEach(function (k) { o[k] = r[k]; });
     o.TotalCost = ''; return o;
@@ -1138,7 +1208,7 @@ function procForRole_(session) {
 function procLinesForRole_(session) {
   const rows = readTab_('ProcedureLines').slice(-500);
   if (!session) return [];
-  if (session.role === 'admin') return rows;
+  if (ROLE_RANK[session.role] >= 2) return rows;
   return rows.map(function (r) {
     var o = {}; Object.keys(r).forEach(function (k) { o[k] = r[k]; });
     o.UnitCost = ''; o.LineCost = ''; return o;
