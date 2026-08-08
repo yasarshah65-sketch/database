@@ -278,9 +278,13 @@ function setSetting_(q) {
   return { ok: true };
 }
 
-const ROTA_HEADERS = ['Date','Theatres','HCA','WardNurse','RecoveryNurse','RMOOnCall','Notes','AcksJSON',
-  'T1_Type','T1_Detail','T1_Surgeon','T1_Surgeon2','T1_Anaesthetist','T1_SFA','T1_Scrub1','T1_Scrub2','T1_Scrub3','T1_ODP',
-  'T2_Type','T2_Detail','T2_Surgeon','T2_Surgeon2','T2_Anaesthetist','T2_SFA','T2_Scrub1','T2_Scrub2','T2_Scrub3','T2_ODP'];
+const ROTA_THEATRE_FIELDS = ['Type','Detail','Colour','CasesJSON','Surgeon','Surgeon2','Surgeon3',
+  'Anaesthetist','SFA','Scrub1','Scrub2','Scrub3','ODP'];
+const ROTA_DAY_FIELDS = ['HCAWard','HCATheatre','WardNurse','NightNurse','RecoveryNurse',
+  'RMODay','RMONight','HousekeepingAM','HousekeepingPM','ReceptionAM','ReceptionPM','Notes','AcksJSON','StarsJSON'];
+const ROTA_HEADERS = ['Date','Theatres'].concat(ROTA_DAY_FIELDS)
+  .concat(ROTA_THEATRE_FIELDS.map(f=>'T1_'+f))
+  .concat(ROTA_THEATRE_FIELDS.map(f=>'T2_'+f));
 
 function userSetRole_(q) {
   // admin / superadmin: change a user's role — used to appoint the super admins
@@ -1024,13 +1028,25 @@ function migrate() {
       .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
     pr.setFrozenRows(1);
   }
-  // Rota tab (theatre staffing — superadmin only)
-  if (!ss.getSheetByName('Rota')) {
-    const rt = ss.insertSheet('Rota');
-    rt.getRange(1, 1, 1, ROTA_HEADERS.length).setValues([ROTA_HEADERS])
-      .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
-    rt.setFrozenRows(1);
-    rt.getRange('A:A').setNumberFormat('@');   // dates as text — no timezone drift
+  // Rota tab (theatre staffing — superadmin only). Idempotent: create if missing,
+  // and if it already exists, append any NEW columns without disturbing existing data.
+  {
+    let rt = ss.getSheetByName('Rota');
+    if (!rt) {
+      rt = ss.insertSheet('Rota');
+      rt.getRange(1, 1, 1, ROTA_HEADERS.length).setValues([ROTA_HEADERS])
+        .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+      rt.setFrozenRows(1);
+      rt.getRange('A:A').setNumberFormat('@');
+    } else {
+      const existing = rt.getRange(1, 1, 1, Math.max(1, rt.getLastColumn())).getValues()[0].map(String);
+      const missing = ROTA_HEADERS.filter(function (hn) { return existing.indexOf(hn) < 0; });
+      if (missing.length) {
+        rt.getRange(1, existing.length + 1, 1, missing.length).setValues([missing])
+          .setFontWeight('bold').setBackground('#2B6168').setFontColor('#FFFFFF');
+      }
+      rt.getRange('A:A').setNumberFormat('@');
+    }
   }
   // ensure CartJSON column exists on Procedures (temporary-save security net)
   {
